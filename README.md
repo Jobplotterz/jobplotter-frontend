@@ -1,20 +1,41 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Jobplotter — Frontend
 
-# Run and deploy your AI Studio app
+Jobplotter is the intelligent way to navigate the modern job market. Plot your path to the perfect role with data-driven matches and ATS-ready resumes.
 
-This contains everything you need to run your app locally.
+This repository contains the Jobplotter web frontend: a React + Vite single-page app with the resume builder, job board, dashboard, and pricing flows.
 
-View your app in AI Studio: https://ai.studio/apps/f81312bf-cb15-4ae9-9a71-eac4610b3ff7
+## Tech stack
 
-## Run Locally
+- React 19 + TypeScript
+- Vite
+- Tailwind CSS v4
+- shadcn/ui + Base UI (Radix successor)
+- React Router v7
+- Framer Motion
 
-**Prerequisites:**  Node.js
+## Run locally
 
+**Prerequisites:** Node.js 20+
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```
+   npm install
+   ```
+2. Copy the env file and adjust as needed:
+   ```
+   cp .env.example .env.local
+   ```
+3. Start the dev server:
+   ```
+   npm run dev
+   ```
+
+The app runs on http://localhost:3000.
+
+## Scripts
+
+- `npm run dev` — start the Vite dev server
+- `npm run build` — build for production into `dist/`
+- `npm run preview` — preview the production build locally
+- `npm run lint` — type-check with `tsc --noEmit`
+- `npm run clean` — remove the `dist/` directory
