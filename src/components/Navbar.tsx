@@ -15,7 +15,6 @@ export function Navbar() {
 
         {/* Desktop Nav */}
         <div className="hidden lg:flex items-center gap-7">
-          <Link to="/" className="text-[13px] font-medium text-slate-600 hover:text-indigo-600 transition-colors">Home</Link>
           <Link to="/jobs" className="text-[13px] font-medium text-slate-600 hover:text-indigo-600 transition-colors">Jobs</Link>
           <Link to="/dashboard" className="text-[13px] font-medium text-slate-600 hover:text-indigo-600 transition-colors">Dashboard</Link>
           <Link to="/builder" className="text-[13px] font-medium text-slate-600 hover:text-indigo-600 transition-colors">Resume Builder</Link>
@@ -47,7 +46,6 @@ export function Navbar() {
       {mobileOpen && (
         <div className="lg:hidden absolute top-full left-0 right-0 bg-white border-b border-slate-200 shadow-lg z-50">
           <div className="flex flex-col px-5 py-4 space-y-1">
-            <Link to="/" onClick={() => setMobileOpen(false)} className="px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">Home</Link>
             <Link to="/jobs" onClick={() => setMobileOpen(false)} className="px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">Jobs</Link>
             <Link to="/dashboard" onClick={() => setMobileOpen(false)} className="px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">Dashboard</Link>
             <Link to="/builder" onClick={() => setMobileOpen(false)} className="px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">Resume Builder</Link>

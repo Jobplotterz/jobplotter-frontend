@@ -2,32 +2,32 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   PieChart, Search, Users, Phone, FileText, Calendar, RefreshCw, TrendingUp,
-  ArrowLeft, Bell, Bookmark, Mail, Phone as PhoneIcon, Briefcase,
+  Bookmark, Mail, Phone as PhoneIcon, Briefcase,
   Facebook, Twitter, Menu, X, LogOut, Home as HomeIcon
 } from "lucide-react";
-import { Footer } from "../components/Footer";
+import { Navbar } from "../components/Navbar";
 
 export function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-white font-sans text-slate-900">
-      {/* Mobile sidebar overlay */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/30 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
+    <div className="min-h-screen flex flex-col bg-white font-sans text-slate-900">
+      <Navbar />
 
-      {/* Sidebar */}
-      <aside className={`
-        fixed md:sticky top-0 left-0 h-full md:h-screen w-60 border-r border-slate-100 flex flex-col bg-slate-50/50 z-50
-        transform transition-transform duration-200 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
-        <div className="p-5 flex items-center justify-between">
-          <Link to="/" className="flex items-center" aria-label="Jobplotter home">
-            <img src="/jp-logo.png" alt="Jobplotter" className="h-7 w-auto object-contain" />
-          </Link>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden p-1 text-slate-400 hover:text-slate-600" aria-label="Close menu">
+      <div className="flex flex-col md:flex-row flex-1">
+        {/* Mobile sidebar overlay */}
+        {sidebarOpen && (
+          <div className="fixed inset-0 bg-black/30 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
+        )}
+
+        {/* Sidebar */}
+        <aside className={`
+          fixed md:sticky top-0 md:top-16 left-0 h-full md:h-[calc(100vh-4rem)] w-60 border-r border-slate-100 flex flex-col bg-slate-50/50 z-50
+          transform transition-transform duration-200 ease-in-out
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}>
+        <div className="p-5 flex items-center justify-end md:hidden">
+          <button onClick={() => setSidebarOpen(false)} className="p-1 text-slate-400 hover:text-slate-600" aria-label="Close menu">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -79,32 +79,12 @@ export function Dashboard() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Top Header */}
-        <header className="sticky top-0 z-30 flex items-center justify-between px-5 sm:px-8 py-4 bg-white/90 backdrop-blur-md border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-1.5 -ml-1.5 text-slate-600 hover:text-slate-900" aria-label="Open menu">
-              <Menu className="w-5 h-5" />
-            </button>
-            <Link to="/jobs" className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-900 hover:text-slate-600 transition-colors bg-slate-50 px-3 py-1.5 rounded-full">
-              <ArrowLeft className="w-3.5 h-3.5" /> Back to results
-            </Link>
-          </div>
-          <div className="flex items-center gap-3">
-            <button className="px-4 py-2 bg-emerald-500 text-white text-xs font-semibold rounded-full hover:bg-emerald-600 transition-colors hidden sm:block">
-              Post Job
-            </button>
-            <button className="relative p-1.5 text-slate-400 hover:text-slate-600 transition-colors" aria-label="Notifications">
-              <Bell className="w-4.5 h-4.5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white" />
-            </button>
-            <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border border-slate-200">
-              <img src="https://picsum.photos/seed/user1/100/100" alt="User" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-            </div>
-            <Link to="/" className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors" aria-label="Exit dashboard" title="Exit dashboard">
-              <LogOut className="w-4.5 h-4.5" />
-            </Link>
-          </div>
-        </header>
+        {/* Mobile-only sidebar toggle */}
+        <div className="md:hidden flex items-center px-5 py-3 border-b border-slate-100">
+          <button onClick={() => setSidebarOpen(true)} className="p-1.5 -ml-1.5 text-slate-600 hover:text-slate-900" aria-label="Open menu">
+            <Menu className="w-5 h-5" />
+          </button>
+        </div>
 
         <div className="max-w-5xl mx-auto w-full px-5 sm:px-8 pb-12">
           {/* Profile Header */}
@@ -339,8 +319,8 @@ export function Dashboard() {
           </div>
         </div>
 
-        <Footer />
       </main>
+      </div>
     </div>
   );
 }
