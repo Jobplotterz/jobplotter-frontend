@@ -1,3 +1,5 @@
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+
 export interface ResumeData {
   personalInfo: {
     fullName: string;
@@ -65,3 +67,29 @@ export const initialResumeData: ResumeData = {
   ],
   skills: ["React", "TypeScript", "Node.js", "Tailwind CSS", "GraphQL", "AWS"],
 };
+
+const STORAGE_KEY = "jobplotter:resumeData";
+
+function loadResumeData(): ResumeData {
+  if (typeof window === "undefined") return initialResumeData;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as ResumeData) : initialResumeData;
+  } catch {
+    return initialResumeData;
+  }
+}
+
+export function useResumeData(): [ResumeData, Dispatch<SetStateAction<ResumeData>>] {
+  const [data, setData] = useState<ResumeData>(loadResumeData);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      // ignore (quota, private mode, etc.)
+    }
+  }, [data]);
+
+  return [data, setData];
+}

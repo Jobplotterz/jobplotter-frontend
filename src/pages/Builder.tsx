@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { FileText, Eye, Download, ScanSearch } from "lucide-react";
-import { ResumeData, initialResumeData } from "../types";
+import { useResumeData } from "../types";
 import { ResumeForm } from "../components/ResumeForm";
 import { ResumePreview } from "../components/ResumePreview";
 import { Navbar } from "../components/Navbar";
 
 export function Builder() {
-  const [resumeData, setResumeData] = useState<ResumeData>(initialResumeData);
+  const [resumeData, setResumeData] = useResumeData();
   const [showPreview, setShowPreview] = useState(false);
 
   return (

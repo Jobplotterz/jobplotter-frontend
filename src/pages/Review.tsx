@@ -1,67 +1,21 @@
 import { Navbar } from "../components/Navbar";
-import {
-  Undo, Redo, Bold, Italic, Underline, Strikethrough, Code, Link as LinkIcon,
-  Smile, Image as ImageIcon, List, Palette, LayoutGrid, MessageSquare,
-  Search, EyeOff, AlertCircle, ChevronDown
-} from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { useResumeData } from "../types";
+import { ResumePreview } from "../components/ResumePreview";
 
 export function Review() {
+  const [resumeData] = useResumeData();
+
   return (
     <div className="h-screen flex flex-col bg-white font-sans text-slate-900 overflow-hidden">
       <Navbar />
-
-      {/* Toolbar - scrollable on mobile */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-1.5 border-b border-slate-200 bg-white z-10 overflow-x-auto gap-2">
-        <div className="flex items-center gap-0.5 text-slate-600 shrink-0">
-          <button className="p-1.5 hover:bg-slate-100 rounded"><Undo className="w-3.5 h-3.5" /></button>
-          <button className="p-1.5 hover:bg-slate-100 rounded"><Redo className="w-3.5 h-3.5" /></button>
-          <div className="w-px h-3.5 bg-slate-200 mx-0.5" />
-          <button className="flex items-center gap-1 p-1.5 hover:bg-slate-100 rounded text-xs font-medium">
-            Paragraph <ChevronDown className="w-2.5 h-2.5" />
-          </button>
-          <div className="w-px h-3.5 bg-slate-200 mx-0.5" />
-          <button className="p-1.5 hover:bg-slate-100 rounded"><Bold className="w-3.5 h-3.5" /></button>
-          <button className="p-1.5 hover:bg-slate-100 rounded"><Italic className="w-3.5 h-3.5" /></button>
-          <button className="p-1.5 hover:bg-slate-100 rounded hidden sm:block"><Underline className="w-3.5 h-3.5" /></button>
-          <button className="p-1.5 hover:bg-slate-100 rounded hidden sm:block"><Strikethrough className="w-3.5 h-3.5" /></button>
-          <button className="p-1.5 hover:bg-slate-100 rounded hidden md:block"><Code className="w-3.5 h-3.5" /></button>
-          <button className="p-1.5 hover:bg-slate-100 rounded hidden md:block"><LinkIcon className="w-3.5 h-3.5" /></button>
-          <button className="p-1.5 hover:bg-slate-100 rounded hidden md:block"><Smile className="w-3.5 h-3.5" /></button>
-          <button className="p-1.5 hover:bg-slate-100 rounded hidden md:block"><ImageIcon className="w-3.5 h-3.5" /></button>
-          <div className="w-px h-3.5 bg-slate-200 mx-0.5 hidden md:block" />
-          <button className="items-center gap-1 p-1.5 hover:bg-slate-100 rounded hidden md:flex">
-            <List className="w-3.5 h-3.5" /> <ChevronDown className="w-2.5 h-2.5" />
-          </button>
-          <div className="w-px h-3.5 bg-slate-200 mx-0.5 hidden md:block" />
-          <button className="items-center gap-1 p-1.5 hover:bg-slate-100 rounded hidden md:flex">
-            <div className="w-3.5 h-3.5 rounded-full bg-slate-900" /> <ChevronDown className="w-2.5 h-2.5" />
-          </button>
-          <div className="w-px h-3.5 bg-slate-200 mx-0.5 hidden lg:block" />
-          <button className="p-1.5 hover:bg-slate-100 rounded hidden lg:block"><LayoutGrid className="w-3.5 h-3.5" /></button>
-          <div className="w-px h-3.5 bg-slate-200 mx-0.5 hidden lg:block" />
-          <button className="p-1.5 hover:bg-slate-100 rounded relative hidden sm:block">
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span className="absolute top-0.5 right-0.5 w-2.5 h-2.5 bg-red-500 text-white text-[7px] font-bold flex items-center justify-center rounded-full border border-white">3</span>
-          </button>
-        </div>
-        <div className="flex items-center gap-2 text-slate-600 shrink-0">
-          <button className="p-1.5 hover:bg-slate-100 rounded"><Search className="w-3.5 h-3.5" /></button>
-          <button className="items-center gap-1 p-1.5 hover:bg-slate-100 rounded text-xs font-medium hidden sm:flex">
-            100% <ChevronDown className="w-2.5 h-2.5" />
-          </button>
-          <div className="w-px h-3.5 bg-slate-200 mx-0.5 hidden sm:block" />
-          <button className="items-center gap-1.5 px-2 py-1 hover:bg-slate-100 rounded text-xs font-medium hidden sm:flex">
-            <EyeOff className="w-3.5 h-3.5" /> Hide Score
-          </button>
-        </div>
-      </div>
 
       {/* Main Content - stacks on mobile */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-slate-50/50">
         {/* Left Pane: Document Preview */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 flex justify-center order-2 lg:order-1">
-          <div className="w-full max-w-[800px] bg-white shadow-sm border border-slate-200 aspect-8.5/11 max-h-[80vh] lg:max-h-none" />
+          <ResumePreview data={resumeData} />
         </div>
 
         {/* Right Pane: Review Panel */}
