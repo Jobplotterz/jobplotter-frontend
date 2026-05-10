@@ -1,10 +1,20 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Search, MapPin, Layout, MessageSquare, CreditCard, ShoppingBag, Briefcase, Globe, BarChart } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Footer } from "../components/Footer";
 import { Navbar } from "../components/Navbar";
+import { useAuth } from "@/contexts/AuthContext";
+import { useEffect } from "react";
 
 export function Home() {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
       <Navbar />
@@ -141,7 +151,7 @@ export function Home() {
       </section>
 
       {/* Features Section */}
-      <section className="py-16 sm:py-20 max-w-7xl mx-auto px-5 sm:px-8">
+      <section id="features" className="py-16 sm:py-20 max-w-7xl mx-auto px-5 sm:px-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-slate-50 p-8 rounded-2xl text-center hover:bg-slate-100 transition-colors">
@@ -166,7 +176,7 @@ export function Home() {
             <p className="text-sm text-slate-500 leading-relaxed">Find answers to the most common questions about Jobplotter, pricing, features, and more.</p>
           </div>
           <div className="lg:col-span-7">
-            <Accordion type="single" collapsible className="w-full">
+            <Accordion type="single" collapsible={true.toString()} className="w-full">
               <AccordionItem value="item-1" className="border-b border-slate-200 py-1">
                 <AccordionTrigger className="text-[15px] font-semibold text-slate-900 hover:no-underline">Can I try Jobplotter for free?</AccordionTrigger>
                 <AccordionContent className="text-slate-500 text-sm leading-relaxed pt-1 pb-2">

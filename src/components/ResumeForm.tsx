@@ -1,10 +1,11 @@
+import { useState, useEffect } from "react";
 import { ResumeData } from "../types";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, User, Briefcase, GraduationCap, Wrench } from "lucide-react";
+import { Plus, Trash2, User, Briefcase, GraduationCap, Wrench, Award } from "lucide-react";
 
 interface ResumeFormProps {
   data: ResumeData;
@@ -12,6 +13,17 @@ interface ResumeFormProps {
 }
 
 export function ResumeForm({ data, onChange }: ResumeFormProps) {
+  const [skillsInput, setSkillsInput] = useState(data.skills.join(", "));
+
+  // Sync internal skills input when data.skills changes externally
+  useEffect(() => {
+    const currentListString = data.skills.join(", ");
+    const normalizedInput = skillsInput.split(",").map(s => s.trim()).filter(Boolean).join(", ");
+    if (currentListString !== normalizedInput) {
+      setSkillsInput(currentListString);
+    }
+  }, [data.skills]);
+
   const updatePersonalInfo = (field: keyof ResumeData['personalInfo'], value: string) => {
     onChange({
       ...data,
@@ -67,7 +79,32 @@ export function ResumeForm({ data, onChange }: ResumeFormProps) {
     });
   };
 
+  const updateCertification = (id: string, field: keyof ResumeData['certifications'][0], value: string) => {
+    onChange({
+      ...data,
+      certifications: data.certifications.map(cert => cert.id === id ? { ...cert, [field]: value } : cert)
+    });
+  };
+
+  const addCertification = () => {
+    onChange({
+      ...data,
+      certifications: [
+        ...data.certifications,
+        { id: Date.now().toString(), name: "", issuer: "", date: "" }
+      ]
+    });
+  };
+
+  const removeCertification = (id: string) => {
+    onChange({
+      ...data,
+      certifications: data.certifications.filter(cert => cert.id !== id)
+    });
+  };
+
   const updateSkills = (value: string) => {
+    setSkillsInput(value);
     onChange({
       ...data,
       skills: value.split(",").map(s => s.trim()).filter(Boolean)
@@ -187,7 +224,7 @@ export function ResumeForm({ data, onChange }: ResumeFormProps) {
           <AccordionTrigger className="py-3.5 hover:no-underline">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-md bg-amber-50 flex items-center justify-center">
-                <GraduationCap className="w-3.5 h-3.5 text-amber-600" />
+                < GraduationCap className="w-3.5 h-3.5 text-amber-600" />
               </div>
               <span className="text-sm font-semibold text-slate-900">Education</span>
               {data.education.length > 0 && (
@@ -233,6 +270,53 @@ export function ResumeForm({ data, onChange }: ResumeFormProps) {
           </AccordionContent>
         </AccordionItem>
 
+        {/* Certifications */}
+        <AccordionItem value="certifications" className="border border-slate-200 rounded-xl px-4 bg-white">
+          <AccordionTrigger className="py-3.5 hover:no-underline">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center">
+                <Award className="w-3.5 h-3.5 text-blue-600" />
+              </div>
+              <span className="text-sm font-semibold text-slate-900">Certifications</span>
+              {data.certifications && data.certifications.length > 0 && (
+                <span className="ml-1 text-[11px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">{data.certifications.length}</span>
+              )}
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="space-y-3 pb-4">
+            {data.certifications?.map((cert, index) => (
+              <div key={cert.id} className="p-3.5 border border-slate-200 rounded-lg space-y-3 relative bg-slate-50/50">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Certification {index + 1}</span>
+                  <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-500 h-6 w-6" onClick={() => removeCertification(cert.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="col-span-1 sm:col-span-2 space-y-1.5">
+                    <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Certification Name</Label>
+                    <Input value={cert.name} onChange={e => updateCertification(cert.id, "name", e.target.value)} placeholder="AWS Certified Solutions Architect" className="h-9 text-[13px] border-slate-200 focus-visible:ring-indigo-500" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Issuer</Label>
+                    <Input value={cert.issuer} onChange={e => updateCertification(cert.id, "issuer", e.target.value)} placeholder="Amazon Web Services" className="h-9 text-[13px] border-slate-200 focus-visible:ring-indigo-500" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Date</Label>
+                    <Input value={cert.date} onChange={e => updateCertification(cert.id, "date", e.target.value)} placeholder="2023" className="h-9 text-[13px] border-slate-200 focus-visible:ring-indigo-500" />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={addCertification}
+              className="w-full py-2.5 border-2 border-dashed border-slate-200 rounded-lg text-[13px] font-medium text-slate-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/50 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Certification
+            </button>
+          </AccordionContent>
+        </AccordionItem>
+
         {/* Skills */}
         <AccordionItem value="skills" className="border border-slate-200 rounded-xl px-4 bg-white">
           <AccordionTrigger className="py-3.5 hover:no-underline">
@@ -250,7 +334,7 @@ export function ResumeForm({ data, onChange }: ResumeFormProps) {
             <div className="space-y-1.5">
               <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Skills (comma separated)</Label>
               <Textarea
-                value={data.skills.join(", ")}
+                value={skillsInput}
                 onChange={e => updateSkills(e.target.value)}
                 placeholder="React, TypeScript, Node.js, Figma..."
                 className="h-20 text-[13px] border-slate-200 focus-visible:ring-indigo-500 resize-none"

@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { Navbar } from "../components/Navbar";
-import { Footer } from "../components/Footer";
-import { Search, MapPin, SlidersHorizontal, MoreVertical, Check, Facebook, Twitter, ChevronDown, X } from "lucide-react";
+import { Search, MapPin, SlidersHorizontal, MoreVertical, Check, ChevronDown, X, LayoutDashboard, ShoppingBag, User, Star, Briefcase } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const jobs = [
@@ -13,8 +11,8 @@ const jobs = [
     location: "London",
     description: "Minimum 3 shifts a week Monday - Friday with the ability to work an 8 to 9 hour shift time each week between the hours of 7 A.M. - 7 P.M.",
     tags: ["Business", "Management", "Remote"],
-    logo: <div className="w-10 h-10 flex items-center justify-center text-red-500 font-bold text-2xl">A</div>,
-    logoBg: "bg-red-50/50"
+    logo: <div className="w-10 h-10 flex items-center justify-center text-indigo-600"><LayoutDashboard className="w-6 h-6" /></div>,
+    logoBg: "bg-indigo-50"
   },
   {
     id: 2,
@@ -23,9 +21,9 @@ const jobs = [
     rate: "$40-48 hourly",
     location: "New York",
     description: "Lines for Life also offers a great benefits package valued at over $9,500 that includes full coverage for employee health, dental, vision, short",
-    tags: ["Business", "Management", "Remote"],
-    logo: <div className="w-10 h-10 flex items-center justify-center text-blue-500 font-bold text-2xl">G</div>,
-    logoBg: "bg-blue-50/50"
+    tags: ["Customer Support", "Operations", "Remote"],
+    logo: <div className="w-10 h-10 flex items-center justify-center text-green-600"><ShoppingBag className="w-6 h-6" /></div>,
+    logoBg: "bg-green-50"
   },
   {
     id: 3,
@@ -34,9 +32,9 @@ const jobs = [
     rate: "$55-60 hourly",
     location: "Washington",
     description: "Healthcare Interest — become an expert on emerging healthcare programs and excited to speak with providers about the future of healthcare",
-    tags: ["Business", "Management", "Remote"],
-    logo: <div className="w-10 h-10 flex items-center justify-center text-blue-600"><Facebook className="w-6 h-6" /></div>,
-    logoBg: "bg-blue-50/50"
+    tags: ["Healthcare", "Advocacy", "Full-time"],
+    logo: <div className="w-10 h-10 flex items-center justify-center text-blue-600"><User className="w-6 h-6" /></div>,
+    logoBg: "bg-blue-50"
   },
   {
     id: 4,
@@ -45,9 +43,9 @@ const jobs = [
     rate: "$60-65 hourly",
     location: "London",
     description: "The Admissions Coordinator works under moderate supervision in performing a variety of administrative tasks in support of admissions activities that include",
-    tags: ["Business", "Management", "Remote"],
-    logo: <div className="w-10 h-10 flex items-center justify-center text-sky-500"><Twitter className="w-6 h-6 fill-current" /></div>,
-    logoBg: "bg-sky-50/50"
+    tags: ["Consulting", "Culture", "Remote"],
+    logo: <div className="w-10 h-10 flex items-center justify-center text-rose-600"><Star className="w-6 h-6" /></div>,
+    logoBg: "bg-rose-50"
   },
   {
     id: 5,
@@ -56,9 +54,9 @@ const jobs = [
     rate: "$35-40 hourly",
     location: "Villa Rica",
     description: "This may include the use of the following guidelines and/or reference tools: CPT, ICD9, HCPC, medical terminology manuals; Correct Coding Initiative",
-    tags: ["Business", "Management", "Remote"],
-    logo: <div className="w-10 h-10 flex items-center justify-center text-slate-900 font-bold text-3xl leading-none">a</div>,
-    logoBg: "bg-slate-100/50"
+    tags: ["Coordination", "Medical", "Full-time"],
+    logo: <div className="w-10 h-10 flex items-center justify-center text-amber-600"><Briefcase className="w-6 h-6" /></div>,
+    logoBg: "bg-amber-50"
   }
 ];
 
@@ -76,24 +74,22 @@ export function Jobs() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50/30 font-sans text-slate-900">
-      <div className="relative">
-        <Navbar />
-        <div className="absolute top-0 left-0 right-0 h-64 bg-linear-to-r from-blue-50 via-indigo-50/50 to-pink-50 z-0" />
-      </div>
+    <div className="relative bg-slate-50/30 font-sans text-slate-900 pb-12 min-h-full">
+      <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-r from-blue-50 via-indigo-50/50 to-pink-50 z-0 pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24 relative z-10 mt-4 sm:mt-8">
         {/* Search Bar */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1.5 flex flex-col sm:flex-row items-center mb-8 sm:mb-12">
           <div className="flex-1 flex items-center px-3 py-2 border-b sm:border-b-0 sm:border-r border-slate-100 w-full">
-            <input type="text" placeholder="Founder" defaultValue="Founder" className="w-full outline-none py-1.5 text-sm text-slate-900 font-semibold" />
+            <Search className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" />
+            <input type="text" placeholder="Job title, keyword, or company" className="w-full outline-none py-1.5 text-sm text-slate-900 font-medium" />
           </div>
           <div className="flex-1 flex items-center px-3 py-2 w-full">
             <MapPin className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" />
             <input type="text" placeholder="Any location" className="w-full outline-none py-1.5 text-sm text-slate-600" />
           </div>
-          <button className="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors mt-1.5 sm:mt-0">
-            <Search className="w-3.5 h-3.5" /> Find jobs
+          <button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-sm hover:shadow-md mt-1.5 sm:mt-0">
+            Find jobs
           </button>
         </div>
 
@@ -202,8 +198,6 @@ export function Jobs() {
           </div>
         </div>
       </div>
-
-      <Footer />
     </div>
   );
 }

@@ -1,148 +1,317 @@
-import { Navbar } from "../components/Navbar";
-import { AlertCircle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
+import { AlertCircle, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useResumeData } from "../types";
 import { ResumePreview } from "../components/ResumePreview";
 
 export function Review() {
-  const [resumeData] = useResumeData();
+  const [searchParams] = useSearchParams();
+  const resumeId = searchParams.get("id");
+  const [resumeData, setResumeData, saveToBackend, , , , , , , savedReview, lastReviewedHash, needsAnalysis] = useResumeData(resumeId);
+  const [review, setReview] = useState<any>(null);
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizedData, setOptimizedData] = useState<any>(null);
+  const [showOptimized, setShowOptimized] = useState(false);
+
+  const runOptimization = async () => {
+    if (!review) return;
+    setIsOptimizing(true);
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/optimize`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          resumeData,
+          reviewData: review
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setOptimizedData(data);
+        setShowOptimized(true);
+      } else {
+        throw new Error("Failed to optimize resume");
+      }
+    } catch (e: any) {
+      console.error("Optimization Error:", e);
+      alert("Unable to optimize resume. Please try again.");
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  const applyOptimization = async () => {
+    if (!optimizedData) return;
+    setResumeData(optimizedData);
+    await saveToBackend(optimizedData);
+    setOptimizedData(null);
+    setShowOptimized(false);
+    alert("Optimization applied successfully! Your resume has been updated.");
+  };
+
+  // Sync with savedReview when it loads
+  useEffect(() => {
+    if (savedReview) {
+      setReview(savedReview);
+    }
+  }, [savedReview]);
+
+  const runReview = async () => {
+    setIsReviewing(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/review`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(resumeData)
+      });
+      
+      const data = await response.json();
+
+      if (response.ok && !data.error) {
+        setReview(data);
+      } else {
+        const errorMsg = data.error || "Failed to get AI review. Please try again.";
+        if (errorMsg.includes("high demand") || response.status === 503) {
+          throw new Error("The AI Reviewer is currently in high demand. This is temporary, please click 'Try Again' in a few seconds.");
+        }
+        throw new Error(errorMsg);
+      }
+    } catch (e: any) {
+      console.error("Review Error:", e);
+      setError(e.message || "Unable to connect to AI Reviewer. Please try again.");
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  const lastCheckedDataRef = useRef<string>("");
+
+  useEffect(() => {
+    if (!resumeData.personalInfo.fullName || isReviewing) return;
+
+    const currentDataStr = JSON.stringify(resumeData, Object.keys(resumeData).sort());
+    
+    // Trigger review if database flag says it's updated, OR if we have no review at all
+    const shouldRun = needsAnalysis || !savedReview;
+
+    if (shouldRun && currentDataStr !== lastCheckedDataRef.current) {
+      lastCheckedDataRef.current = currentDataStr;
+      runReview();
+    }
+  }, [resumeData, savedReview, needsAnalysis]);
+
+  const getStatusColor = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'excellent': return 'bg-green-50 text-green-700 border-green-100';
+      case 'good': return 'bg-blue-50 text-blue-700 border-blue-100';
+      case 'needs work': return 'bg-red-50 text-red-700 border-red-100';
+      default: return 'bg-slate-50 text-slate-700 border-slate-100';
+    }
+  };
 
   return (
-    <div className="h-screen flex flex-col bg-white font-sans text-slate-900 overflow-hidden">
-      <Navbar />
-
-      {/* Main Content - stacks on mobile */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-slate-50/50">
+    <div className="h-full flex flex-col bg-slate-50 font-sans text-slate-900 overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left Pane: Document Preview */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 flex justify-center order-2 lg:order-1">
-          <ResumePreview data={resumeData} />
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 flex flex-col items-center order-2 lg:order-1 bg-slate-50">
+          <div className="w-full flex-1 flex flex-col max-w-4xl">
+            <ResumePreview data={showOptimized ? optimizedData : resumeData} />
+          </div>
         </div>
 
         {/* Right Pane: Review Panel */}
-        <div className="w-full lg:w-[420px] xl:w-[460px] bg-white border-t lg:border-t-0 lg:border-l border-slate-200 overflow-y-auto shrink-0 order-1 lg:order-2 max-h-[50vh] lg:max-h-none">
+        <div className="w-full lg:w-[420px] xl:w-[460px] bg-white border-t lg:border-t-0 lg:border-l border-slate-200 overflow-y-auto shrink-0 order-1 lg:order-2 max-h-[70vh] lg:max-h-none">
           <div className="p-4 sm:p-5">
-            <h2 className="text-xl font-bold text-slate-900 mb-5">Resume Review</h2>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-600" />
+                AI Resume Review
+              </h2>
+            </div>
 
-            {/* Overall Score Card */}
-            <div className="border border-slate-200 rounded-xl p-4 sm:p-5 mb-5">
-              <div className="flex items-center gap-4 sm:gap-5 mb-6">
-                <div className="relative w-14 h-14 flex items-center justify-center shrink-0">
-                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                    <path className="text-slate-100" strokeWidth="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    <path className="text-red-500" strokeWidth="4" strokeDasharray="15, 100" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  </svg>
-                  <span className="absolute text-xl font-bold text-slate-900">15</span>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Overall Score</h3>
-                  <p className="text-xs text-slate-500">Based on ATS compatibility, content, structure, and more.</p>
-                </div>
+            {isReviewing ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mb-4" />
+                <h3 className="text-lg font-bold text-slate-900 mb-1">Analyzing your resume...</h3>
+                <p className="text-sm text-slate-500 max-w-xs">Our AI is checking for ATS compatibility, tone, and professional impact.</p>
               </div>
-
-              <div className="space-y-3">
-                {[
-                  { label: "Tone & Style", score: 25 },
-                  { label: "Content", score: 10 },
-                  { label: "Structure", score: 30 },
-                  { label: "Skills", score: 5 },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-medium text-slate-700">{item.label}</span>
-                      <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-red-50 text-red-600 rounded">Needs Work</span>
+            ) : error ? (
+              <div className="bg-red-50 border border-red-100 rounded-xl p-5 text-center">
+                <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+                <p className="text-sm font-medium text-red-800 mb-4">{error}</p>
+                <button 
+                  onClick={runReview}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : !review ? (
+              <div className="text-center py-20">
+                <Sparkles className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                <p className="text-sm text-slate-500 mb-6">Complete your profile to get a detailed AI review.</p>
+                <button 
+                  onClick={runReview}
+                  className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                >
+                  Start AI Analysis
+                </button>
+              </div>
+            ) : (
+              <div className="animate-in fade-in duration-500">
+                {/* Overall Score Card */}
+                <div className="border border-slate-200 rounded-xl p-5 mb-5 shadow-sm">
+                  <div className="flex items-center gap-5 mb-6">
+                    <div className="relative w-16 h-16 flex items-center justify-center shrink-0">
+                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                        <path className="text-slate-100" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path 
+                          className={review.overallScore > 70 ? "text-green-500" : review.overallScore > 40 ? "text-amber-500" : "text-red-500"} 
+                          strokeWidth="3" 
+                          strokeDasharray={`${review.overallScore}, 100`} 
+                          strokeLinecap="round"
+                          stroke="currentColor" 
+                          fill="none" 
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
+                        />
+                      </svg>
+                      <span className="absolute text-xl font-extrabold text-slate-900">{review.overallScore}</span>
                     </div>
-                    <span className="text-[13px] font-bold text-slate-900">{item.score}<span className="text-slate-400 font-medium">/100</span></span>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Recruiter Impact</h3>
+                      <p className="text-xs text-slate-500">Measures quality and impact for human recruiters.</p>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* ATS Score Section */}
-            <div className="bg-red-50/30 border border-red-100 rounded-xl p-4 sm:p-5 mb-5">
-              <div className="flex items-center gap-2 mb-1.5">
-                <h3 className="text-sm font-bold text-slate-900">ATS Score</h3>
-                <span className="px-1.5 py-0.5 text-[11px] font-bold bg-red-100 text-red-700 rounded-full">20/100</span>
-              </div>
-              <p className="text-xs text-slate-600 mb-3">Needs Improvement</p>
+                  {/* Move Optimize Button and Banner Here */}
+                  <div className="mb-6">
+                    <button
+                      onClick={runOptimization}
+                      disabled={isOptimizing}
+                      className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-70 mb-3"
+                    >
+                      {isOptimizing ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                      {isOptimizing ? "Optimizing for ATS..." : "Optimize My Resume"}
+                    </button>
 
-              <div className="space-y-1.5">
-                {[
-                  "Add relevant technical keywords like JavaScript, React, HTML, CSS, Git, and other frontend technologies",
-                  "Include programming languages and frameworks in a dedicated technical skills section",
-                  "Use standard section headers like 'Technical Skills', 'Projects', 'Professional Experience'",
-                  "Format dates consistently and use standard date formats (MM/YYYY)"
-                ].map((text, i) => (
-                  <div key={i} className="flex gap-2 bg-amber-50/50 p-2.5 rounded-lg border border-amber-100/50">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-800 font-medium leading-relaxed">{text}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+                    {optimizedData && (
+                      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 animate-in slide-in-from-top duration-300">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-bold text-indigo-900">Optimization Ready!</h3>
+                          <button 
+                            onClick={() => setShowOptimized(!showOptimized)}
+                            className="text-[11px] font-bold text-indigo-600 hover:underline"
+                          >
+                            {showOptimized ? "View Original" : "View Optimized"}
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-indigo-700 mb-4">We've rewritten your descriptions and skills for better ATS performance.</p>
+                        
+                        <div className="bg-white/50 rounded-lg p-3 mb-4 border border-indigo-100 flex gap-2.5">
+                          <AlertCircle className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                          <p className="text-[10px] text-indigo-800 leading-relaxed italic">
+                            <strong>AI Ethics Note:</strong> This optimization only refines your existing story. The AI cannot (and should not) fabricate experience you haven't provided, as honesty is critical for interview success.
+                          </p>
+                        </div>
 
-            {/* Detailed Accordion */}
-            <Accordion type="multiple" defaultValue={["content"]} className="w-full space-y-3">
-              <AccordionItem value="tone" className="border border-slate-200 rounded-xl px-3 bg-white">
-                <AccordionTrigger className="py-3 hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-slate-900">Tone & Style</span>
-                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-red-50 text-red-600 rounded">Needs Work</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="pb-3">
-                  <p className="text-xs text-slate-500">Suggestions for tone and style will appear here.</p>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="content" className="border border-slate-200 rounded-xl px-3 bg-white">
-                <AccordionTrigger className="py-3 hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-slate-900">Content</span>
-                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-red-50 text-red-600 rounded">Needs Work</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="pb-3 space-y-2">
-                  {[
-                    { title: "Completely irrelevant work experience", desc: "All listed experience is in healthcare/caregiving with no connection to software development. Either add relevant technical projects, internships, or reframe existing experience to highlight transferable skills like problem-solving and attention to detail." },
-                    { title: "Missing technical projects", desc: "Frontend engineer roles require demonstrable coding experience. Add a projects section showcasing web applications, GitHub repositories, or coding bootcamp projects with specific technologies used." },
-                    { title: "Outdated and irrelevant education", desc: "A 1998 BA from Nigeria with no field specified doesn't support a frontend engineering application. Add relevant certifications, coding bootcamps, online courses, or self-taught programming education." },
-                    { title: "No quantifiable achievements", desc: "Include metrics and specific accomplishments like 'Built responsive web application serving 1000+ users' or 'Improved page load time by 40%' to demonstrate impact." },
-                  ].map((item, i) => (
-                    <div key={i} className="flex gap-2 bg-amber-50/50 p-3 rounded-lg border border-amber-100/50">
-                      <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                      <div>
-                        <h4 className="text-xs font-bold text-amber-900 mb-0.5">{item.title}</h4>
-                        <p className="text-xs text-amber-800 leading-relaxed">{item.desc}</p>
+                        <button
+                          onClick={applyOptimization}
+                          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm"
+                        >
+                          Apply Optimized Version
+                        </button>
                       </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    {review?.categories && Object.entries(review.categories).map(([key, cat]: [string, any]) => (
+                      <div key={key} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700 capitalize">{key}</span>
+                            <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border ${getStatusColor(cat.status)}`}>
+                              {cat.status}
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold text-slate-900">{cat.score}%</span>
+                        </div>
+                        <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full transition-all duration-1000 ${cat.score > 70 ? "bg-green-500" : cat.score > 40 ? "bg-amber-500" : "bg-red-500"}`}
+                            style={{ width: `${cat.score}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bot Compatibility Section */}
+                <div className="bg-slate-900 rounded-xl p-5 mb-5 text-white shadow-xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-white mb-0.5">Bot Compatibility</h3>
+                      <p className="text-[11px] text-slate-400">Measures how well AI/ATS systems parse your data.</p>
                     </div>
+                    <div className="px-3 py-1 bg-white/10 rounded-lg text-lg font-bold border border-white/10">
+                      {review?.atsScore ?? 0}%
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {review?.suggestions?.map((text: string, i: number) => (
+                      <div key={i} className="flex gap-2.5 bg-white/5 p-3 rounded-lg border border-white/5 hover:bg-white/10 transition-colors">
+                        <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
+                        <p className="text-xs text-slate-300 leading-relaxed font-medium">{text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Detailed Feedback Accordion */}
+                <Accordion type="multiple" defaultValue={["content"]} className="w-full space-y-3">
+                  {review?.detailedFeedback && Object.entries(review.detailedFeedback).map(([category, feedback]: [string, any]) => (
+                    <AccordionItem key={category} value={category} className="border border-slate-200 rounded-xl px-3 bg-white shadow-sm overflow-hidden">
+                      <AccordionTrigger className="py-4 hover:no-underline">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900 capitalize">{category} Feedback</span>
+                          <span className="text-[11px] text-slate-400 font-medium">{feedback?.length ?? 0} items</span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="pb-4 space-y-3">
+                        {feedback?.map((item: any, i: number) => (
+                          <div key={i} className="flex gap-3 bg-amber-50/40 p-4 rounded-xl border border-amber-100/50">
+                            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                              <h4 className="text-xs font-bold text-amber-900 mb-1">{item.title}</h4>
+                              <p className="text-[11px] text-amber-800 leading-relaxed font-medium">{item.desc}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </AccordionContent>
+                    </AccordionItem>
                   ))}
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="structure" className="border border-slate-200 rounded-xl px-3 bg-white">
-                <AccordionTrigger className="py-3 hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-slate-900">Structure</span>
-                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-red-50 text-red-600 rounded">Needs Work</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="pb-3">
-                  <p className="text-xs text-slate-500">Suggestions for structure will appear here.</p>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="skills" className="border border-slate-200 rounded-xl px-3 bg-white">
-                <AccordionTrigger className="py-3 hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-slate-900">Skills</span>
-                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-red-50 text-red-600 rounded">Needs Work</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="pb-3">
-                  <p className="text-xs text-slate-500">Suggestions for skills will appear here.</p>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+                </Accordion>
+              </div>
+            )}
           </div>
         </div>
       </div>
