@@ -1,39 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, FileText, Briefcase, Star, LogOut, Settings, User, X, Menu } from "lucide-react";
+import { LayoutDashboard, FileText, Briefcase, LogOut, Settings, User, X, Menu } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function DashboardLayout() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [hasResumes, setHasResumes] = useState<boolean>(false);
-  
-  useEffect(() => {
-    const checkResumes = async () => {
-      try {
-        const token = localStorage.getItem("jobplotter_token");
-        if (!token) return;
-        
-        const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setHasResumes(data.length > 0);
-        }
-      } catch (e) {
-        console.error("Failed to check resumes in sidebar", e);
-      }
-    };
-    checkResumes();
-  }, [location.pathname]); // Re-check on navigation in case they just added one
 
   const navigation = [
     { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
     { name: "Resume Builder", href: "/dashboard/builder", icon: FileText },
-    { name: "Job Matches", href: "/dashboard/jobs", icon: Briefcase },
-    ...(hasResumes ? [{ name: "Resume Review", href: "/dashboard/review", icon: Star }] : []),
+    { name: "Jobs", href: "/dashboard/jobs", icon: Briefcase },
   ];
 
   const isActive = (path: string) => {
@@ -103,11 +81,19 @@ export function DashboardLayout() {
       </div>
 
       <div className="p-4 border-t border-slate-200 space-y-1">
-        <button className="w-full flex items-center px-3 py-2.5 text-sm font-medium text-slate-600 rounded-lg hover:bg-slate-50 hover:text-slate-900 transition-colors">
-          <Settings className="w-5 h-5 mr-3 text-slate-400 shrink-0" />
+        <Link
+          to="/dashboard/settings"
+          onClick={() => setIsMobileMenuOpen(false)}
+          className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+            isActive("/dashboard/settings")
+              ? "bg-indigo-50 text-indigo-700"
+              : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+          }`}
+        >
+          <Settings className={`w-5 h-5 mr-3 shrink-0 ${isActive("/dashboard/settings") ? "text-indigo-600" : "text-slate-400"}`} />
           Settings
-        </button>
-        <button 
+        </Link>
+        <button
           onClick={logout}
           className="w-full flex items-center px-3 py-2.5 text-sm font-medium text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
         >

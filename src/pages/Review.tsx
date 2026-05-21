@@ -1,13 +1,41 @@
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
-import { AlertCircle, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { AlertCircle, ArrowLeft, Info, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { useAuth } from "@/contexts/AuthContext";
 import { useResumeData } from "../types";
 import { ResumePreview } from "../components/ResumePreview";
 
+// Look up a cached job by id (Convex `_id` or external `jobId`) across all
+// per-resume caches the Jobs page may have populated. Lets us hydrate the
+// review/optimize flows without depending on Convex having persisted the row.
+function findCachedJob(id: string): any | null {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (key.startsWith("jobplotter_cached_matches_")) {
+        const matches = JSON.parse(localStorage.getItem(key) || "[]");
+        const found = matches.find((m: any) => m?.job && (m.job._id === id || m.job.jobId === id));
+        if (found?.job) return found.job;
+      } else if (key.startsWith("jobplotter_cached_alljobs_")) {
+        const jobs = JSON.parse(localStorage.getItem(key) || "[]");
+        const found = jobs.find((j: any) => j?._id === id || j?.jobId === id);
+        if (found) return found;
+      }
+    }
+  } catch {
+    // Bad JSON in one cache key shouldn't sink the whole lookup.
+  }
+  return null;
+}
+
 export function Review() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const resumeId = searchParams.get("id");
+  const jobId = searchParams.get("jobId");
+  const { logout } = useAuth();
   const [resumeData, setResumeData, saveToBackend, , , , , , , savedReview, lastReviewedHash, needsAnalysis] = useResumeData(resumeId);
   const [review, setReview] = useState<any>(null);
   const [isReviewing, setIsReviewing] = useState(false);
@@ -15,13 +43,150 @@ export function Review() {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizedData, setOptimizedData] = useState<any>(null);
   const [showOptimized, setShowOptimized] = useState(false);
+  const [optimizationError, setOptimizationError] = useState<string | null>(null);
+
+  const [job, setJob] = useState<any>(null);
+  const [isLoadingJob, setIsLoadingJob] = useState(false);
+  const [jobFetchFailed, setJobFetchFailed] = useState(false);
+  // Per-job match data (score / reasoning / strengths / gaps) handed over
+  // via navigation state when the user came from the Jobs/Dashboard modal.
+  // Only present when there's a Match for this resume+job pair.
+  const [matchInfo, setMatchInfo] = useState<{
+    score?: number;
+    reasoning?: string;
+    strengths?: string[];
+    gaps?: string[];
+  } | null>(((location.state as any)?.matchInfo) || null);
+
+  useEffect(() => {
+    const stateMatch = (location.state as any)?.matchInfo;
+    if (stateMatch) setMatchInfo(stateMatch);
+  }, [location.state]);
+
+  useEffect(() => {
+    if (!jobId) return;
+
+    // 1. Job handed to us via navigation state (the common path — user
+    //    clicked "Optimize Resume" on the Jobs/Dashboard modal).
+    const stateJob = (location.state as any)?.job;
+    if (stateJob && (stateJob._id === jobId || stateJob.jobId === jobId)) {
+      setJob(stateJob);
+      setJobFetchFailed(false);
+      return;
+    }
+
+    // 2. Hydrate from the Jobs page's localStorage cache (covers reloads as
+    //    long as the cache is still present).
+    const cached = findCachedJob(jobId);
+    if (cached) {
+      setJob(cached);
+      setJobFetchFailed(false);
+      return;
+    }
+
+    // 3. Last resort: ask the backend. The matches/alljobs endpoints return
+    //    un-persisted RapidAPI rows, so this only succeeds for jobs the user
+    //    has previously opened (which persists them via /visited).
+    const fetchJobDetails = async () => {
+      setIsLoadingJob(true);
+      setJobFetchFailed(false);
+      try {
+        const token = localStorage.getItem("jobplotter_token");
+        const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/jobs/${jobId}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        if (response.status === 401) {
+          logout();
+          return;
+        }
+        if (response.ok) {
+          const data = await response.json();
+          setJob(data);
+        } else {
+          setJobFetchFailed(true);
+        }
+      } catch (e) {
+        console.error("Failed to fetch job details:", e);
+        setJobFetchFailed(true);
+      } finally {
+        setIsLoadingJob(false);
+      }
+    };
+    fetchJobDetails();
+  }, [jobId, location.state]);
+
+  // Map a fetch failure to a human-friendly message. Gemini's 500 ("INTERNAL")
+  // and 503 ("UNAVAILABLE") are transient; anything else is generic.
+  const messageForOptimizationFailure = async (response: Response | null, fallback: string) => {
+    if (!response) return "We couldn't reach the AI Optimizer. Check your connection and try again.";
+    if (response.status === 503) return "The AI Optimizer is briefly overloaded. This usually clears in a few seconds — try again.";
+    if (response.status === 500) {
+      try {
+        const body = await response.clone().json();
+        const detail = (body?.detail || "").toString().toLowerCase();
+        if (detail.includes("high demand") || detail.includes("unavailable") || detail.includes("internal error")) {
+          return "The AI Optimizer hit a temporary hiccup on Google's side. Try again in a moment — it almost always works on retry.";
+        }
+      } catch {
+        // ignore body parse failures, fall through
+      }
+      return "Something went wrong on the AI side. Give it another try.";
+    }
+    return fallback;
+  };
+
+  const runJobOptimization = async () => {
+    if (!jobId) return;
+    setIsOptimizing(true);
+    setOptimizationError(null);
+    let response: Response | null = null;
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/optimize-for-job`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        // Send the cached job inline so the backend doesn't need it persisted
+        // in Convex. `jobId` is still passed for backwards-compatible lookup.
+        body: JSON.stringify({
+          resumeData,
+          jobId: jobId,
+          job: job || undefined
+        })
+      });
+
+      if (response.status === 401) {
+        logout();
+        return;
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        setOptimizedData(data);
+        setShowOptimized(true);
+      } else {
+        throw new Error("Failed to tailor resume");
+      }
+    } catch (e: any) {
+      console.error("Job Optimization Error:", e);
+      setOptimizationError(await messageForOptimizationFailure(response, "We couldn't tailor your resume for this job. Try again."));
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
 
   const runOptimization = async () => {
     if (!review) return;
     setIsOptimizing(true);
+    setOptimizationError(null);
+    let response: Response | null = null;
     try {
       const token = localStorage.getItem("jobplotter_token");
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/optimize`, {
+      response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/optimize`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -32,7 +197,12 @@ export function Review() {
           reviewData: review
         })
       });
-      
+
+      if (response.status === 401) {
+        logout();
+        return;
+      }
+
       if (response.ok) {
         const data = await response.json();
         setOptimizedData(data);
@@ -42,9 +212,18 @@ export function Review() {
       }
     } catch (e: any) {
       console.error("Optimization Error:", e);
-      alert("Unable to optimize resume. Please try again.");
+      setOptimizationError(await messageForOptimizationFailure(response, "We couldn't optimize your resume. Try again."));
     } finally {
       setIsOptimizing(false);
+    }
+  };
+
+  const retryOptimization = () => {
+    setOptimizationError(null);
+    if (jobId) {
+      runJobOptimization();
+    } else {
+      runOptimization();
     }
   };
 
@@ -77,6 +256,11 @@ export function Review() {
         },
         body: JSON.stringify(resumeData)
       });
+      
+      if (response.status === 401) {
+        logout();
+        return;
+      }
       
       const data = await response.json();
 
@@ -123,7 +307,16 @@ export function Review() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-slate-50 font-sans text-slate-900 overflow-hidden">
+    <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 overflow-hidden">
+      <header className="h-14 shrink-0 border-b border-slate-200 bg-white px-4 sm:px-6 flex items-center">
+        <Link
+          to="/dashboard/jobs"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to Jobs
+        </Link>
+      </header>
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left Pane: Document Preview */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 flex flex-col items-center order-2 lg:order-1 bg-slate-50">
@@ -141,6 +334,39 @@ export function Review() {
                 AI Resume Review
               </h2>
             </div>
+
+            {job && (
+              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-xl p-4 mb-5 animate-in slide-in-from-top duration-300">
+                <div className="flex items-center justify-between gap-3 mb-1.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse shrink-0" />
+                    <span className="text-[10px] font-extrabold text-indigo-800 uppercase tracking-wider">Fit for this role</span>
+                  </div>
+                  {matchInfo && typeof matchInfo.score === "number" && (
+                    <span className="shrink-0 px-2 py-0.5 rounded-full bg-white text-indigo-700 text-[11px] font-extrabold border border-indigo-200" title="How well your resume profile matches this specific job">
+                      {matchInfo.score}% match · this job
+                    </span>
+                  )}
+                </div>
+                <h4 className="text-sm font-extrabold text-slate-900 mb-0.5">{job.title}</h4>
+                <p className="text-xs text-slate-500 font-semibold">{job.company || 'Unknown Company'} &bull; {job.location || 'Anywhere'}</p>
+                {matchInfo?.reasoning && (
+                  <p className="text-[11px] text-slate-600 mt-2 leading-relaxed italic border-t border-indigo-100 pt-2">
+                    {matchInfo.reasoning}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {jobFetchFailed && !job && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5 flex gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-900">
+                  <p className="font-bold mb-0.5">Job context unavailable</p>
+                  <p className="text-amber-800">We couldn't load the job you came from. The review below is general — to tailor for a specific role, reopen it from the Jobs page.</p>
+                </div>
+              </div>
+            )}
 
             {isReviewing ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -172,44 +398,110 @@ export function Review() {
               </div>
             ) : (
               <div className="animate-in fade-in duration-500">
+                {/* Section transition: from job-specific match (above) to
+                    job-agnostic resume quality (below). Only render this
+                    divider when there's a job attached — otherwise the
+                    "resume in general" framing is the only thing on the page. */}
+                {job ? (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Your resume in general</span>
+                      <div className="flex-1 h-px bg-slate-200" />
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Independent of any job — how well this resume reads to recruiters and parses through ATS systems.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 flex gap-2.5">
+                    <Info className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      <span className="font-bold text-slate-800">Tip:</span> Even when you're not targeting a specific role, it's worth checking how recruiters and ATS systems read your resume. A strong general score makes every job match land better.
+                    </p>
+                  </div>
+                )}
+
                 {/* Overall Score Card */}
                 <div className="border border-slate-200 rounded-xl p-5 mb-5 shadow-sm">
                   <div className="flex items-center gap-5 mb-6">
                     <div className="relative w-16 h-16 flex items-center justify-center shrink-0">
                       <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                         <path className="text-slate-100" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path 
-                          className={review.overallScore > 70 ? "text-green-500" : review.overallScore > 40 ? "text-amber-500" : "text-red-500"} 
-                          strokeWidth="3" 
-                          strokeDasharray={`${review.overallScore}, 100`} 
+                        <path
+                          className={review.overallScore > 70 ? "text-green-500" : review.overallScore > 40 ? "text-amber-500" : "text-red-500"}
+                          strokeWidth="3"
+                          strokeDasharray={`${review.overallScore}, 100`}
                           strokeLinecap="round"
-                          stroke="currentColor" 
-                          fill="none" 
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
+                          stroke="currentColor"
+                          fill="none"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                         />
                       </svg>
                       <span className="absolute text-xl font-extrabold text-slate-900">{review.overallScore}</span>
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-slate-900">Recruiter Impact</h3>
-                      <p className="text-xs text-slate-500">Measures quality and impact for human recruiters.</p>
+                      <p className="text-xs text-slate-500">How a human recruiter will read this resume on its own.</p>
                     </div>
                   </div>
 
                   {/* Move Optimize Button and Banner Here */}
                   <div className="mb-6">
-                    <button
-                      onClick={runOptimization}
-                      disabled={isOptimizing}
-                      className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-70 mb-3"
-                    >
-                      {isOptimizing ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4" />
-                      )}
-                      {isOptimizing ? "Optimizing for ATS..." : "Optimize My Resume"}
-                    </button>
+                    {jobId ? (
+                      <button
+                        onClick={runJobOptimization}
+                        disabled={isOptimizing}
+                        className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-70 mb-3"
+                      >
+                        {isOptimizing ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                        {isOptimizing ? "Tailoring for role..." : "Tailor Resume for this Job"}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={runOptimization}
+                        disabled={isOptimizing}
+                        className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-70 mb-3"
+                      >
+                        {isOptimizing ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                        {isOptimizing ? "Optimizing for ATS..." : "Optimize My Resume"}
+                      </button>
+                    )}
+
+                    {optimizationError && !optimizedData && (
+                      <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-3 animate-in slide-in-from-top duration-300">
+                        <div className="flex gap-2.5 mb-3">
+                          <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                          <div className="text-xs text-red-900">
+                            <p className="font-bold mb-0.5">Optimization didn't go through</p>
+                            <p className="text-red-800 leading-relaxed">{optimizationError}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={retryOptimization}
+                            disabled={isOptimizing}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {isOptimizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                            {isOptimizing ? "Retrying..." : "Try Again"}
+                          </button>
+                          <button
+                            onClick={() => setOptimizationError(null)}
+                            className="px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {optimizedData && (
                       <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 animate-in slide-in-from-top duration-300">
@@ -264,12 +556,12 @@ export function Review() {
                   </div>
                 </div>
 
-                {/* Bot Compatibility Section */}
+                {/* ATS Compatibility Section */}
                 <div className="bg-slate-900 rounded-xl p-5 mb-5 text-white shadow-xl">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h3 className="text-sm font-bold text-white mb-0.5">Bot Compatibility</h3>
-                      <p className="text-[11px] text-slate-400">Measures how well AI/ATS systems parse your data.</p>
+                      <h3 className="text-sm font-bold text-white mb-0.5">ATS Compatibility</h3>
+                      <p className="text-[11px] text-slate-400">How well applicant tracking systems can parse your resume.</p>
                     </div>
                     <div className="px-3 py-1 bg-white/10 rounded-lg text-lg font-bold border border-white/10">
                       {review?.atsScore ?? 0}%

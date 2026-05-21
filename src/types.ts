@@ -187,16 +187,36 @@ export function useResumeData(initialId?: string | null): [ResumeData, Dispatch<
         return;
       }
 
-      // If we have a storedId for THIS user, load that
-      if (storedId) {
-        await loadResume(storedId);
+      const list = await fetchResumes();
+
+      // 1. Prioritize loading the default active search profile
+      const defaultResume = list.find((r: any) => r.isDefault);
+      if (defaultResume) {
+        const rid = defaultResume._id || defaultResume.id;
+        setResumeId(rid);
+        localStorage.setItem(activeResumeKey, rid);
+        setTitle(defaultResume.title || "My Resume");
+        setReview(defaultResume.review || null);
+        setLastReviewedHash(defaultResume.lastReviewedData || null);
+        setNeedsAnalysis(!!defaultResume.needsAnalysis);
+        if (defaultResume.data) {
+          setData(JSON.parse(defaultResume.data));
+        } else if (defaultResume.extractedData) {
+          setData(defaultResume.extractedData);
+        }
+        saveResumeToCache(userId, rid, defaultResume);
         setIsInitialLoad(false);
-        fetchResumes();
         return;
       }
 
-      const list = await fetchResumes();
-      
+      // 2. If no default resume is marked in DB, fallback to storedId in localStorage
+      if (storedId && list.some((r: any) => (r._id || r.id) === storedId)) {
+        await loadResume(storedId);
+        setIsInitialLoad(false);
+        return;
+      }
+
+      // 3. Fallback to list[0]
       if (list.length > 0 && !resumeId) {
         const latest = list[0]; 
         const rid = latest._id || latest.id;

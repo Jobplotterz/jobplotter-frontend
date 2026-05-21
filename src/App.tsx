@@ -6,6 +6,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Jobs } from "./pages/Jobs";
 import { Pricing } from "./pages/Pricing";
 import { Review } from "./pages/Review";
+import { Settings } from "./pages/Settings";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import VerifyEmail from "./pages/VerifyEmail";
@@ -78,8 +79,8 @@ export default function App() {
         <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
 
         {/* Protected Dashboard Routes */}
-        <Route 
-          path="/dashboard" 
+        <Route
+          path="/dashboard"
           element={
             <ProtectedRoute>
               <DashboardLayout />
@@ -89,8 +90,18 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="builder" element={<Builder />} />
           <Route path="jobs" element={<Jobs />} />
-          <Route path="review" element={<Review />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
+
+        {/* Review lives outside DashboardLayout so it has no sidebar */}
+        <Route
+          path="/dashboard/review"
+          element={
+            <ProtectedRoute>
+              <Review />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Fallback for legacy routes */}
         <Route path="/builder" element={<Navigate to="/dashboard/builder" replace />} />

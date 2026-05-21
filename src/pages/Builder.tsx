@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { FileText, Eye, Download, ScanSearch, Save, Loader2, ChevronDown, Edit2, Check } from "lucide-react";
 import { useResumeData } from "../types";
 import { ResumeForm } from "../components/ResumeForm";
@@ -12,11 +12,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function Builder() {
-  const [resumeData, setResumeData, saveToBackend, isSaving, resumes, loadResume, title, setTitle, currentResumeId, savedReview, lastReviewedHash, needsAnalysis] = useResumeData();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const resumeIdFromUrl = searchParams.get("resumeId");
+  const [resumeData, setResumeData, saveToBackend, isSaving, resumes, loadResume, title, setTitle, currentResumeId, savedReview, lastReviewedHash, needsAnalysis] = useResumeData(resumeIdFromUrl);
   const [showPreview, setShowPreview] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [cachedDownload, setCachedDownload] = useState<{hash: string, url: string} | null>(null);
+
+  // Strip the `?resumeId=...` query param once the hook has loaded that
+  // resume into the editor. We deliberately do NOT change the user's default
+  // resume here — default-setting lives in Settings only.
+  useEffect(() => {
+    if (!resumeIdFromUrl) return;
+    setSearchParams({}, { replace: true });
+  }, [resumeIdFromUrl, setSearchParams]);
 
   const handleLoadResume = async (id: string) => {
     await loadResume(id);
