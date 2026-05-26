@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   Search, MapPin, SlidersHorizontal, Check, ChevronDown, X,
@@ -38,6 +38,45 @@ interface Match {
   strengths?: string[];
   gaps?: string[];
   job: Job;
+}
+
+// Phase-aware loading card. Shows the keyword being searched up front so
+// users know what was extracted from their resume; after ~1.5s, swaps in
+// a second line acknowledging that this is likely a cold cache miss and
+// the wait is one-time.
+function JobsLoadingState({
+  activeTab,
+  keyword,
+}: {
+  activeTab: "matches" | "all";
+  keyword: string | null;
+}) {
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(() => setElapsedMs(Date.now() - start), 200);
+    return () => clearInterval(id);
+  }, []);
+
+  const label = activeTab === "matches" ? "matches" : "roles";
+  const primary = keyword
+    ? `Searching for “${keyword}” ${label}…`
+    : `Finding the best ${label} for you…`;
+  const showSecondary = elapsedMs > 1500;
+  const secondary = "First time we've seen this role — pulling fresh listings. Future searches will be much faster.";
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 bg-white border border-slate-100 rounded-2xl shadow-sm text-center px-6">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-4" />
+      <p className="text-sm font-semibold text-slate-700">{primary}</p>
+      {showSecondary && (
+        <p className="text-xs text-slate-500 mt-2 max-w-sm animate-in fade-in duration-500">
+          {secondary}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function Jobs() {
@@ -112,6 +151,21 @@ export function Jobs() {
   const activeResume = resumes.find(r => r.isDefault) || resumes[0];
   const activeResumeId = activeResume?._id || "none";
 
+  // The keyword the backend will extract from this resume mirrors
+  // extract_keywords_from_resume in jobs.py: prefer jobTitle, fall back to
+  // the first skill. Shown in the loading state so users know what's being
+  // searched on their behalf.
+  const activeKeyword: string | null = useMemo(() => {
+    const data = activeResume?.extractedData;
+    const jobTitle = data?.personalInfo?.jobTitle;
+    if (typeof jobTitle === "string" && jobTitle.trim()) return jobTitle.trim();
+    const skills = data?.skills;
+    if (Array.isArray(skills) && typeof skills[0] === "string" && skills[0].trim()) {
+      return skills[0].trim();
+    }
+    return null;
+  }, [activeResume]);
+
   // Load initial cached data from localStorage if present to prevent spinner flash
   useEffect(() => {
     if (isResumesLoading) return;
@@ -136,12 +190,24 @@ export function Jobs() {
     }
   }, [activeResumeId, isResumesLoading, activeTab]);
 
+  // Tracks the (tab, resume, force) combo currently in-flight. Skipping
+  // re-entrant calls for the same combo prevents the double-/jobs/matches
+  // burst we used to see on cold mount (effect deps churning while resumes
+  // load) — which racing burned RapidAPI quota on every cold cache miss.
+  const inFlightRef = useRef<string | null>(null);
+
   // Fetch jobs / matches based on the active tab.
   // `force=true` bypasses the freshness check (used by the manual Refresh button).
   const fetchJobsData = useCallback(async (force = false) => {
     const cacheKey = activeTab === "matches"
       ? `jobplotter_cached_matches_${activeResumeId}`
       : `jobplotter_cached_alljobs_${activeResumeId}`;
+
+    const inFlightKey = `${activeTab}:${activeResumeId}:${force ? "force" : "auto"}`;
+    if (inFlightRef.current === inFlightKey) {
+      return;
+    }
+    inFlightRef.current = inFlightKey;
 
     if (!force) {
       // Check localStorage directly — in-memory `matches`/`allJobs` may not yet
@@ -160,6 +226,7 @@ export function Jobs() {
       // almost always an AI/source hiccup we want to retry.
       if (cachedIsNonEmpty && isCacheFresh(cacheKey)) {
         setIsDataLoading(false);
+        inFlightRef.current = null;
         return;
       }
       if (!cachedRaw) {
@@ -207,6 +274,7 @@ export function Jobs() {
       console.error("Failed to fetch jobs data:", error);
     } finally {
       setIsDataLoading(false);
+      inFlightRef.current = null;
     }
   }, [activeTab, activeResumeId]);
 
@@ -447,10 +515,7 @@ export function Jobs() {
           {/* Main Job Listings Column */}
           <div className="flex-1 space-y-3">
             {isDataLoading ? (
-              <div className="flex flex-col items-center justify-center py-16 bg-white border border-slate-100 rounded-2xl shadow-sm">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-4" />
-                <p className="text-sm font-semibold text-slate-500">Matching the best roles for you...</p>
-              </div>
+              <JobsLoadingState activeTab={activeTab} keyword={activeKeyword} />
             ) : filteredJobsList.length === 0 ? (
               (() => {
                 const sourceList = activeTab === "matches" ? matches : allJobs;
