@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, FileText, Briefcase, LogOut, Settings, User, X, Menu } from "lucide-react";
+import { LayoutDashboard, FileText, Briefcase, ClipboardList, LogOut, Settings, User, X, Menu } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function DashboardLayout() {
@@ -12,6 +12,7 @@ export function DashboardLayout() {
     { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
     { name: "Resume Builder", href: "/dashboard/builder", icon: FileText },
     { name: "Jobs", href: "/dashboard/jobs", icon: Briefcase },
+    { name: "Applications", href: "/dashboard/applications", icon: ClipboardList },
   ];
 
   const isActive = (path: string) => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  FileText, Sparkles, Plus, Upload, LayoutDashboard, User as UserIcon, Briefcase, X, Pencil, Clock, Building2, ExternalLink
+  FileText, Sparkles, Plus, Upload, LayoutDashboard, User as UserIcon, Briefcase, X, Pencil, Clock, Building2, ExternalLink, Bookmark, BookmarkCheck
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import { ResumePreview } from "@/components/ResumePreview";
 import { initialResumeData, ResumeData } from "@/types";
+import { useJobTracker } from "../hooks/useJobTracker";
 
 type ActiveTab = "overview" | "resumes";
 
@@ -38,6 +39,7 @@ export function Dashboard() {
   const [recentVisits, setRecentVisits] = useState<any[]>([]);
   const [isVisitsLoading, setIsVisitsLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
+  const { tracked, isSaving: isTracking, track } = useJobTracker(selectedJob?._id);
 
   const fetchRecentVisits = async () => {
     try {
@@ -81,25 +83,6 @@ export function Dashboard() {
     fetchResumes();
     fetchRecentVisits();
   }, []);
-
-  const handleSetActiveResume = async (resumeId: string) => {
-    try {
-      const token = localStorage.getItem("jobplotter_token");
-      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/set-default`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ resumeId })
-      });
-      if (response.ok) {
-        fetchResumes();
-      }
-    } catch (error) {
-      console.error("Failed to set default resume:", error);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -516,6 +499,24 @@ export function Dashboard() {
                 <span>Posted {selectedJob.postedAt ? new Date(selectedJob.postedAt).toLocaleDateString() : "Recently"}</span>
               </div>
               <div className="flex flex-wrap items-center gap-3">
+                {tracked ? (
+                  <span
+                    title="Already in your tracker — manage it on the Applications page"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-xl"
+                  >
+                    <BookmarkCheck className="w-3.5 h-3.5" />
+                    Tracked
+                  </span>
+                ) : (
+                  <button
+                    onClick={track}
+                    disabled={isTracking}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Bookmark className="w-3.5 h-3.5" />
+                    {isTracking ? "Tracking…" : "Track Job"}
+                  </button>
+                )}
                 {resumes.length > 0 ? (
                   <button
                     onClick={() => {

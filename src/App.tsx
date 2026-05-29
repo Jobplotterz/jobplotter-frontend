@@ -7,6 +7,7 @@ import { Jobs } from "./pages/Jobs";
 import { Pricing } from "./pages/Pricing";
 import { Review } from "./pages/Review";
 import { Settings } from "./pages/Settings";
+import { Applications } from "./pages/Applications";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import VerifyEmail from "./pages/VerifyEmail";
@@ -90,6 +91,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="builder" element={<Builder />} />
           <Route path="jobs" element={<Jobs />} />
+          <Route path="applications" element={<Applications />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 

@@ -3,8 +3,9 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   Search, MapPin, SlidersHorizontal, Check, ChevronDown, X,
   Building2, Sparkles, Clock, ExternalLink, Briefcase,
-  AlertCircle, ThumbsUp, Compass, RefreshCw
+  AlertCircle, ThumbsUp, Compass, RefreshCw, Bookmark, BookmarkCheck
 } from "lucide-react";
+import { useJobTracker } from "../hooks/useJobTracker";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -97,6 +98,7 @@ export function Jobs() {
   const [locationQuery, setLocationQuery] = useState("");
   
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const { tracked, isSaving: isTracking, track } = useJobTracker(selectedJob?._id);
   const [selectedMatchInfo, setSelectedMatchInfo] = useState<{
     score: number;
     reasoning?: string;
@@ -874,6 +876,24 @@ export function Jobs() {
                 <span>Posted {selectedJob.postedAt ? new Date(selectedJob.postedAt).toLocaleDateString() : "Recently"}</span>
               </div>
               <div className="flex flex-wrap items-center gap-3">
+                {tracked ? (
+                  <span
+                    title="Already in your tracker — manage it on the Applications page"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-xl"
+                  >
+                    <BookmarkCheck className="w-3.5 h-3.5" />
+                    Tracked
+                  </span>
+                ) : (
+                  <button
+                    onClick={track}
+                    disabled={isTracking}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Bookmark className="w-3.5 h-3.5" />
+                    {isTracking ? "Tracking…" : "Track Job"}
+                  </button>
+                )}
                 {resumes.length > 0 ? (
                   <button
                     onClick={() => {
