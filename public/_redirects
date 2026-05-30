@@ -1,0 +1,8 @@
+# Netlify SPA fallback. Any request that doesn't match a real file or
+# directory falls through to /index.html, where React Router takes over.
+# The Google OAuth callback at /login?code=... was getting Netlify's
+# default 404 page because /login isn't a real file. This fixes it.
+#
+# Status 200 (not 301/302) means the URL bar still shows /login — React
+# Router needs to see the original path, not a redirect target.
+/*    /index.html    200

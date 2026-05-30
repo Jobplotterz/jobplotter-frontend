@@ -18,7 +18,18 @@ jobs:
       - run: npm ci
 
       - name: Build frontend
-        run: npm run build
+        run: |
+          # Fail loudly if VITE_API_URL is missing. Without this guard,
+          # Vite silently falls back to the `||` default in our fetches
+          # (`http://localhost:8000/api/v1`) and bakes localhost into the
+          # production bundle — which Chrome then blocks under Private
+          # Network Access. We'd rather a red CI run than a broken site.
+          if [ -z "$VITE_API_URL" ]; then
+            echo "::error::VITE_API_URL secret is empty. Set it on the frontend repo (Settings → Secrets and variables → Actions → Repository secrets) to e.g. https://api.jobplotter.ai/api/v1, then re-run."
+            exit 1
+          fi
+          echo "Building with VITE_API_URL length=${#VITE_API_URL} (value masked)"
+          npm run build
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
@@ -46,3 +57,9 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
           server-dir: ${{ secrets.FTP_DEPLOY_PATH }}
+          # The action's `.ftp-deploy-sync-state.json` manifest on the server
+          # got out of sync with reality — it thinks files are uploaded that
+          # aren't actually present, so subsequent deploys skip them. Wipe
+          # the server dir clean once to force a full re-upload, then remove
+          # this flag (commit after the next green run).
+          dangerous-clean-slate: true
