@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 interface User {
@@ -170,6 +170,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     navigate("/login", { replace: true });
   }, [navigate]);
+
+  // Hold the latest `logout` in a ref so the fetch interceptor below can
+  // install ONCE on mount yet always call the up-to-date function.
+  const logoutRef = useRef(logout);
+  useEffect(() => {
+    logoutRef.current = logout;
+  }, [logout]);
+
+  // Global 401 → auto-logout interceptor. Wraps window.fetch once at mount
+  // so every fetch (including the dozen scattered across pages and hooks)
+  // is covered without per-call boilerplate. We only trigger logout when a
+  // token exists in localStorage — a 401 from POST /auth/login or
+  // /auth/google is a normal "bad credentials" response, not a session
+  // expiry, and the user isn't logged in to begin with.
+  useEffect(() => {
+    const originalFetch = window.fetch;
+
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+
+      try {
+        const input = args[0];
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+            ? input.toString()
+            : (input as Request).url;
+
+        const hadToken = !!localStorage.getItem("jobplotter_token");
+        if (response.status === 401 && hadToken && url.startsWith(API_URL)) {
+          console.warn("[AuthContext] 401 from", url, "— session expired, logging out");
+          logoutRef.current();
+        }
+      } catch {
+        // Never let interceptor logic break the original fetch contract.
+      }
+
+      return response;
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
 
   return (
     <AuthContext.Provider

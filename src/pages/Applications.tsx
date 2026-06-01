@@ -3,7 +3,6 @@ import {
   Briefcase, Building2, Clock, Loader2, Trash2, ChevronDown,
   ClipboardList,
 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 
 type Status = "saved" | "applied" | "interviewing" | "offer" | "rejected";
 
@@ -38,7 +37,6 @@ interface Application {
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
 export function Applications() {
-  const { logout } = useAuth();
   const [apps, setApps] = useState<Application[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
@@ -50,10 +48,6 @@ export function Applications() {
       const res = await fetch(`${API_URL}/applications/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.status === 401) {
-        logout();
-        return;
-      }
       if (res.ok) {
         const data = await res.json();
         setApps(data);

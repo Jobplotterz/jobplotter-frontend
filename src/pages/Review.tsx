@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AlertCircle, ArrowLeft, Info, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { useAuth } from "@/contexts/AuthContext";
 import { useResumeData } from "../types";
 import { ResumePreview } from "../components/ResumePreview";
 
@@ -35,7 +34,6 @@ export function Review() {
   const location = useLocation();
   const resumeId = searchParams.get("id");
   const jobId = searchParams.get("jobId");
-  const { logout } = useAuth();
   const [resumeData, setResumeData, saveToBackend, , , , , , , savedReview, lastReviewedHash, needsAnalysis] = useResumeData(resumeId);
   const [review, setReview] = useState<any>(null);
   const [isReviewing, setIsReviewing] = useState(false);
@@ -97,10 +95,6 @@ export function Review() {
             "Authorization": `Bearer ${token}`
           }
         });
-        if (response.status === 401) {
-          logout();
-          return;
-        }
         if (response.ok) {
           const data = await response.json();
           setJob(data);
@@ -159,11 +153,6 @@ export function Review() {
         })
       });
 
-      if (response.status === 401) {
-        logout();
-        return;
-      }
-
       if (response.ok) {
         const data = await response.json();
         setOptimizedData(data);
@@ -197,11 +186,6 @@ export function Review() {
           reviewData: review
         })
       });
-
-      if (response.status === 401) {
-        logout();
-        return;
-      }
 
       if (response.ok) {
         const data = await response.json();
@@ -256,12 +240,7 @@ export function Review() {
         },
         body: JSON.stringify(resumeData)
       });
-      
-      if (response.status === 401) {
-        logout();
-        return;
-      }
-      
+
       const data = await response.json();
 
       if (response.ok && !data.error) {

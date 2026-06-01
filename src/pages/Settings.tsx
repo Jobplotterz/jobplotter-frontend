@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
 import { FileText, Check, Loader2, Clock, Settings as SettingsIcon } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 
 export function Settings() {
-  const { logout } = useAuth();
   const [resumes, setResumes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -15,10 +13,6 @@ export function Settings() {
       const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
-      if (response.status === 401) {
-        logout();
-        return;
-      }
       if (response.ok) {
         const data = await response.json();
         setResumes(data);
