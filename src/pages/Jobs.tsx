@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
-  Search, MapPin, SlidersHorizontal, Check, ChevronDown, X,
-  Building2, Sparkles, Clock, ExternalLink, Briefcase,
+  Search, SlidersHorizontal, Check, ChevronDown, X,
+  Sparkles, Clock, ExternalLink, Briefcase,
   AlertCircle, ThumbsUp, Compass, RefreshCw, Bookmark, BookmarkCheck
 } from "lucide-react";
 import { useJobTracker } from "../hooks/useJobTracker";
+import { CompanyLogo } from "../components/CompanyLogo";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -49,33 +50,17 @@ function JobsLoadingState({
   activeTab,
   keyword,
 }: {
-  activeTab: "matches" | "all";
+  activeTab: "for-you" | "search";
   keyword: string | null;
 }) {
-  const [elapsedMs, setElapsedMs] = useState(0);
-
-  useEffect(() => {
-    const start = Date.now();
-    const id = setInterval(() => setElapsedMs(Date.now() - start), 200);
-    return () => clearInterval(id);
-  }, []);
-
-  const label = activeTab === "matches" ? "matches" : "roles";
-  const primary = keyword
-    ? `Searching for “${keyword}” ${label}…`
-    : `Finding the best ${label} for you…`;
-  const showSecondary = elapsedMs > 1500;
-  const secondary = "First time we've seen this role — pulling fresh listings. Future searches will be much faster.";
+  const primary = activeTab === "search"
+    ? (keyword ? `Searching for “${keyword}”…` : "Searching…")
+    : (keyword ? `Finding matches for “${keyword}”…` : "Finding the best matches for you…");
 
   return (
     <div className="flex flex-col items-center justify-center py-16 bg-white border border-slate-100 rounded-2xl shadow-sm text-center px-6">
       <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-4" />
       <p className="text-sm font-semibold text-slate-700">{primary}</p>
-      {showSecondary && (
-        <p className="text-xs text-slate-500 mt-2 max-w-sm animate-in fade-in duration-500">
-          {secondary}
-        </p>
-      )}
     </div>
   );
 }
@@ -85,18 +70,16 @@ export function Jobs() {
   const navigate = useNavigate();
   const openJobId = searchParams.get("openJobId");
 
-  const [activeTab, setActiveTab] = useState<"matches" | "all">("matches");
+  const [activeTab, setActiveTab] = useState<"for-you" | "search">("for-you");
   const [resumes, setResumes] = useState<any[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   
   const [isResumesLoading, setIsResumesLoading] = useState(true);
   const [isDataLoading, setIsDataLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [locationQuery, setLocationQuery] = useState("");
-  
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const { tracked, isSaving: isTracking, track } = useJobTracker(selectedJob?._id);
   const [selectedMatchInfo, setSelectedMatchInfo] = useState<{
@@ -107,9 +90,78 @@ export function Jobs() {
   } | null>(null);
   
   const [jobTypeOpen, setJobTypeOpen] = useState(true);
+  // All three filter sections are collapsible for a consistent UX —
+  // previously only Job Type collapsed, which felt arbitrary.
+  const [locationOpen, setLocationOpen] = useState(true);
+  const [salaryOpen, setSalaryOpen] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Daily Refresh quota. Backend enforces the cap; UI just displays it.
+  const [refreshQuota, setRefreshQuota] = useState<{
+    used: number; limit: number; remaining: number;
+  } | null>(null);
+
+  // Search-tab state. `searchInput` is what's currently typed; `searchKeyword`
+  // is the most recently submitted query (used as the backend keyword). They
+  // separate so typing doesn't refetch — only submit does.
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [searchKeyword, setSearchKeyword] = useState<string>("");
+
+  const fetchRefreshQuota = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/jobs/refresh-status`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.ok) setRefreshQuota(await res.json());
+    } catch (e) {
+      // Non-fatal — button just won't show a counter.
+      console.error("Failed to fetch refresh quota:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRefreshQuota();
+  }, [fetchRefreshQuota]);
+
+  // --- Filter state ---
+  // employmentTypes: set of selected canonical labels. Empty set = no
+  // restriction (don't accidentally hide every job when the user touches no
+  // checkboxes).
+  const EMPLOYMENT_LABELS = ["Full-time", "Part-time", "Contract", "Internship"] as const;
+  type EmploymentLabel = (typeof EMPLOYMENT_LABELS)[number];
+  const [employmentTypes, setEmploymentTypes] = useState<Set<EmploymentLabel>>(new Set());
+  const [remoteFilter, setRemoteFilter] = useState<"all" | "remote" | "onsite">("all");
+  // Minimum salary in thousands per year. null = no floor.
+  const [minSalaryK, setMinSalaryK] = useState<number | null>(null);
+
+  const activeFilterCount =
+    employmentTypes.size + (remoteFilter !== "all" ? 1 : 0) + (minSalaryK !== null ? 1 : 0);
+
+  const clearFilters = () => {
+    setEmploymentTypes(new Set());
+    setRemoteFilter("all");
+    setMinSalaryK(null);
+  };
+
+  // Map RapidAPI's noisy raw employment_type values (FULL_TIME, Full Time,
+  // full-time, "FULL_TIME, OTHER" from our list-flattening, etc.) onto our
+  // canonical labels.
+  const employmentMatches = (raw: string | null | undefined, selected: Set<EmploymentLabel>): boolean => {
+    if (selected.size === 0) return true;
+    if (!raw) return false;
+    const lower = raw.toLowerCase();
+    for (const label of selected) {
+      if (label === "Full-time" && (lower.includes("full"))) return true;
+      if (label === "Part-time" && lower.includes("part")) return true;
+      if (label === "Contract" && (lower.includes("contract") || lower.includes("contractor"))) return true;
+      if (label === "Internship" && (lower.includes("intern"))) return true;
+    }
+    return false;
+  };
 
   // Skip refetching if the cache for this tab+resume was written less than 15 min ago.
   // Why: navigating between sidebar pages was triggering a full /jobs/matches re-run on
@@ -135,7 +187,7 @@ export function Jobs() {
         const data = await response.json();
         setResumes(data);
         if (data.length === 0) {
-          setActiveTab("all");
+          setActiveTab("search");
         }
       }
     } catch (error) {
@@ -168,29 +220,33 @@ export function Jobs() {
     return null;
   }, [activeResume]);
 
-  // Load initial cached data from localStorage if present to prevent spinner flash
+  // Load initial cached data from localStorage if present to prevent spinner flash.
+  // For You cache is per-resume; Search cache is per-submitted-keyword so two
+  // different searches don't cross-pollinate each other's previews.
   useEffect(() => {
     if (isResumesLoading) return;
     try {
       const cachedMatches = localStorage.getItem(`jobplotter_cached_matches_${activeResumeId}`);
-      const cachedAllJobs = localStorage.getItem(`jobplotter_cached_alljobs_${activeResumeId}`);
-      if (cachedMatches) {
-        setMatches(JSON.parse(cachedMatches));
+      const searchCacheKey = searchKeyword.trim()
+        ? `jobplotter_cached_search_${searchKeyword.trim().toLowerCase()}`
+        : null;
+      const cachedSearch = searchCacheKey ? localStorage.getItem(searchCacheKey) : null;
+
+      setMatches(cachedMatches ? JSON.parse(cachedMatches) : []);
+      setAllJobs(cachedSearch ? JSON.parse(cachedSearch) : []);
+
+      if (activeTab === "search" && !searchKeyword.trim()) {
+        // Search tab with no query yet → nothing to fetch, nothing to load.
+        // Render the empty "Search for jobs" prompt instead of a spinner.
+        setIsDataLoading(false);
       } else {
-        setMatches([]);
+        const hasCache = activeTab === "for-you" ? !!cachedMatches : !!cachedSearch;
+        setIsDataLoading(!hasCache);
       }
-      if (cachedAllJobs) {
-        setAllJobs(JSON.parse(cachedAllJobs));
-      } else {
-        setAllJobs([]);
-      }
-      
-      const hasCache = activeTab === "matches" ? !!cachedMatches : !!cachedAllJobs;
-      setIsDataLoading(!hasCache);
     } catch (e) {
       console.error("Failed to load jobs cache:", e);
     }
-  }, [activeResumeId, isResumesLoading, activeTab]);
+  }, [activeResumeId, isResumesLoading, activeTab, searchKeyword]);
 
   // Tracks the (tab, resume, force) combo currently in-flight. Skipping
   // re-entrant calls for the same combo prevents the double-/jobs/matches
@@ -198,22 +254,33 @@ export function Jobs() {
   // load) — which racing burned RapidAPI quota on every cold cache miss.
   const inFlightRef = useRef<string | null>(null);
 
-  // Fetch jobs / matches based on the active tab.
-  // `force=true` bypasses the freshness check (used by the manual Refresh button).
   const fetchJobsData = useCallback(async (force = false) => {
-    const cacheKey = activeTab === "matches"
-      ? `jobplotter_cached_matches_${activeResumeId}`
-      : `jobplotter_cached_alljobs_${activeResumeId}`;
+    setError(null);
+    // Search tab needs a submitted query to do anything. Bail out cleanly
+    // so the empty-state UI ("type a search") can render without spinners.
+    if (activeTab === "search" && !searchKeyword.trim()) {
+      setAllJobs([]);
+      setIsDataLoading(false);
+      inFlightRef.current = null;
+      return;
+    }
 
-    const inFlightKey = `${activeTab}:${activeResumeId}:${force ? "force" : "auto"}`;
+    // Cache keys differ by mode. For You is per-resume (matches don't change
+    // with keystrokes); Search is per-keyword (every submitted query is its
+    // own corpus slice).
+    const cacheKey = activeTab === "for-you"
+      ? `jobplotter_cached_matches_${activeResumeId}`
+      : `jobplotter_cached_search_${searchKeyword.trim().toLowerCase()}`;
+
+    const inFlightKey = activeTab === "for-you"
+      ? `for-you:${activeResumeId}:${force ? "force" : "auto"}`
+      : `search:${searchKeyword.trim().toLowerCase()}:${force ? "force" : "auto"}`;
     if (inFlightRef.current === inFlightKey) {
       return;
     }
     inFlightRef.current = inFlightKey;
 
     if (!force) {
-      // Check localStorage directly — in-memory `matches`/`allJobs` may not yet
-      // reflect the sibling hydration effect's setState on this same render.
       const cachedRaw = localStorage.getItem(cacheKey);
       let cachedIsNonEmpty = false;
       if (cachedRaw) {
@@ -224,8 +291,6 @@ export function Jobs() {
           cachedIsNonEmpty = false;
         }
       }
-      // Only short-circuit on fresh AND non-empty cache — empty results are
-      // almost always an AI/source hiccup we want to retry.
       if (cachedIsNonEmpty && isCacheFresh(cacheKey)) {
         setIsDataLoading(false);
         inFlightRef.current = null;
@@ -241,15 +306,14 @@ export function Jobs() {
     try {
       const token = localStorage.getItem("jobplotter_token");
       const headers = { "Authorization": `Bearer ${token}` };
+      const base = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
-      if (activeTab === "matches") {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/jobs/matches`, { headers });
+      if (activeTab === "for-you") {
+        const qs = force ? "?force_refresh=true" : "";
+        const response = await fetch(`${base}/jobs/matches${qs}`, { headers });
         if (response.ok) {
           const data = await response.json();
           setMatches(data);
-          // Don't cache empty results — they almost always mean a transient AI
-          // failure (Gemini 503/500), and a 15-min TTL on that "poisons" the
-          // tab so the user sees no jobs until the timestamp expires.
           if (Array.isArray(data) && data.length > 0) {
             localStorage.setItem(cacheKey, JSON.stringify(data));
             localStorage.setItem(`${cacheKey}_ts`, String(Date.now()));
@@ -257,9 +321,15 @@ export function Jobs() {
             localStorage.removeItem(cacheKey);
             localStorage.removeItem(`${cacheKey}_ts`);
           }
+        } else {
+          setError("The AI matcher is temporarily unavailable. Please try again in a few seconds.");
         }
       } else {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/jobs/`, { headers });
+        // Search mode: hit /jobs/ with the user-typed keyword. Backend uses
+        // it as the corpus search key; no resume lookup happens.
+        const params = new URLSearchParams({ keyword: searchKeyword.trim() });
+        if (force) params.set("force_refresh", "true");
+        const response = await fetch(`${base}/jobs/?${params.toString()}`, { headers });
         if (response.ok) {
           const data = await response.json();
           setAllJobs(data);
@@ -270,15 +340,22 @@ export function Jobs() {
             localStorage.removeItem(cacheKey);
             localStorage.removeItem(`${cacheKey}_ts`);
           }
+        } else {
+          setError("We couldn't connect to the job search service. Please try again.");
         }
       }
-    } catch (error) {
-      console.error("Failed to fetch jobs data:", error);
+    } catch (err) {
+      console.error("Failed to fetch jobs data:", err);
+      setError("A network error occurred. Please check your connection and try again.");
     } finally {
       setIsDataLoading(false);
       inFlightRef.current = null;
+      // A forced refresh either consumed a credit or was denied; in
+      // either case the server-side counter changed and we want the
+      // button label to reflect that immediately.
+      if (force) fetchRefreshQuota();
     }
-  }, [activeTab, activeResumeId]);
+  }, [activeTab, activeResumeId, searchKeyword, fetchRefreshQuota]);
 
   useEffect(() => {
     if (!isResumesLoading) {
@@ -289,7 +366,7 @@ export function Jobs() {
   // Handle URL deep-linking for openJobId
   useEffect(() => {
     if (openJobId && !isDataLoading) {
-      if (activeTab === "matches") {
+      if (activeTab === "for-you") {
         const matchedObj = matches.find(m => m.jobId === openJobId || m.job?._id === openJobId);
         if (matchedObj) {
           handleOpenJob(matchedObj.job, {
@@ -350,7 +427,7 @@ export function Jobs() {
           setSelectedJob(structuredJob);
           
           // Propagate structured details back to list to cache in memory
-          if (activeTab === "matches") {
+          if (activeTab === "for-you") {
             setMatches(prev => prev.map(m => {
               if (m.job.jobId === job.jobId || m.job._id === job._id) {
                 return { ...m, job: structuredJob };
@@ -372,40 +449,32 @@ export function Jobs() {
     }
   };
 
-  // Filter jobs locally
+  // Filter jobs locally using only the sidebar controls. Text/location
+  // search are no longer client-side concerns — Search has its own typed
+  // keyword that drives a backend fetch, and For You has no text input.
   const filteredJobsList = useMemo(() => {
-    const sq = searchQuery.toLowerCase().trim();
-    const lq = locationQuery.toLowerCase().trim();
+    const minSalary = minSalaryK !== null ? minSalaryK * 1000 : null;
 
-    if (activeTab === "matches") {
-      return matches.filter(m => {
-        const j = m.job;
-        if (!j) return false;
-        const matchesSearch = !sq || 
-          j.title.toLowerCase().includes(sq) || 
-          (j.company && j.company.toLowerCase().includes(sq)) ||
-          j.description.toLowerCase().includes(sq);
-        const matchesLocation = !lq || 
-          (j.location && j.location.toLowerCase().includes(lq));
-        return matchesSearch && matchesLocation;
-      });
-    } else {
-      return allJobs.filter(j => {
-        const matchesSearch = !sq || 
-          j.title.toLowerCase().includes(sq) || 
-          (j.company && j.company.toLowerCase().includes(sq)) ||
-          j.description.toLowerCase().includes(sq);
-        const matchesLocation = !lq || 
-          (j.location && j.location.toLowerCase().includes(lq));
-        return matchesSearch && matchesLocation;
-      });
+    const passesAll = (j: Job): boolean => {
+      if (!employmentMatches(j.employment_type, employmentTypes)) return false;
+      if (remoteFilter === "remote" && !j.remote) return false;
+      if (remoteFilter === "onsite" && j.remote) return false;
+      if (minSalary !== null) {
+        if (typeof j.salary_min !== "number" || j.salary_min < minSalary) return false;
+      }
+      return true;
+    };
+
+    if (activeTab === "for-you") {
+      return matches.filter((m) => m.job && passesAll(m.job));
     }
-  }, [activeTab, matches, allJobs, searchQuery, locationQuery]);
+    return allJobs.filter(passesAll);
+  }, [activeTab, matches, allJobs, employmentTypes, remoteFilter, minSalaryK]);
 
-  // Reset pagination when search queries or tabs change
+  // Reset pagination when search/filters/tab change
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchQuery, locationQuery]);
+  }, [activeTab, searchKeyword, employmentTypes, remoteFilter, minSalaryK]);
 
   // Paginate list
   const paginatedJobsList = useMemo(() => {
@@ -427,8 +496,10 @@ export function Jobs() {
       <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-r from-blue-50 via-indigo-50/50 to-pink-50 z-0 pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24 relative z-10 mt-4 sm:mt-8">
-        {/* Active Profile Card */}
-        {activeResume && (
+        {/* Active Profile Card. Only relevant on the For You tab — Search
+            isn't keyed on the resume so showing the profile would imply
+            it affects results when it doesn't. */}
+        {activeResume && activeTab === "for-you" && (
           <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden mb-8">
             <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl" />
             <div className="relative z-10">
@@ -449,80 +520,224 @@ export function Jobs() {
           </section>
         )}
 
-        {/* Search Bar */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-1.5 flex flex-col sm:flex-row items-center mb-8 sm:mb-10">
-          <div className="flex-1 flex items-center px-3 py-2 border-b sm:border-b-0 sm:border-r border-slate-100 w-full">
-            <Search className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" />
-            <input 
-              type="text" 
-              placeholder="Job title, keyword, or company" 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full outline-none py-1.5 text-sm text-slate-900 font-medium" 
-            />
+        {/* Tab bar. Tabs sit on the LEFT as the primary navigation —
+            they define the page's mode, so the user's eye should land on
+            them first. Secondary actions (Refresh, mobile Filters toggle)
+            sit on the right so they don't compete for visual hierarchy.
+            Always visible regardless of resume count: a user without a
+            resume can still try Search; clicking For You shows a "Upload
+            a resume" empty state. */}
+        <div className="flex items-center justify-between gap-2 mb-6 border-b border-slate-200/60 pb-3">
+          {/* Primary: mode tabs */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab("for-you")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                activeTab === "for-you"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              For You
+            </button>
+            <button
+              onClick={() => setActiveTab("search")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                activeTab === "search"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              <Compass className="w-3.5 h-3.5" />
+              Search
+            </button>
           </div>
-          <div className="flex-1 flex items-center px-3 py-2 w-full">
-            <MapPin className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" />
-            <input 
-              type="text" 
-              placeholder="Filter by location" 
-              value={locationQuery}
-              onChange={(e) => setLocationQuery(e.target.value)}
-              className="w-full outline-none py-1.5 text-sm text-slate-600" 
-            />
-          </div>
-        </div>
 
-        {/* Tab Toggle between matches and all jobs */}
-        {resumes.length > 0 && (
-          <div className="flex items-center justify-between gap-2 mb-6 border-b border-slate-200/60 pb-3">
+          {/* Secondary: actions */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => fetchJobsData(true)}
-              disabled={isDataLoading}
+              disabled={isDataLoading || (refreshQuota !== null && refreshQuota.remaining === 0)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              title="Force refresh (bypass cache)"
+              title={
+                refreshQuota === null
+                  ? "Force refresh (bypass cache)"
+                  : refreshQuota.remaining === 0
+                  ? "Daily refresh limit reached. Resets at midnight UTC."
+                  : `Pulls fresh listings from the source. ${refreshQuota.remaining} left today.`
+              }
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isDataLoading ? "animate-spin" : ""}`} />
               Refresh
+              {/* Show explicit "X left" badge only when the user has spent
+                  at least one credit. Hiding it when fresh keeps the
+                  button visually quiet for the 99% of users who never hit
+                  the cap. */}
+              {refreshQuota !== null && refreshQuota.used > 0 && (
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    refreshQuota.remaining === 0
+                      ? "bg-slate-200 text-slate-500"
+                      : "bg-indigo-50 text-indigo-700"
+                  }`}
+                >
+                  {refreshQuota.remaining} left
+                </span>
+              )}
             </button>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setActiveTab("matches")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === "matches"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Top Matches
-              </button>
-              <button
-                onClick={() => setActiveTab("all")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === "all"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
-                }`}
-              >
-                <Compass className="w-3.5 h-3.5" />
-                All Related Roles
-              </button>
-            </div>
+            {/* Mobile filter toggle. Desktop has the panel always visible
+                to the right of the listings, so we hide this on lg+. */}
+            <button
+              onClick={() => setFiltersOpen((v) => !v)}
+              aria-expanded={filtersOpen}
+              aria-controls="jobs-filter-panel"
+              className={`lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+                filtersOpen
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Filters
+              {activeFilterCount > 0 && (
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    filtersOpen ? "bg-white/20 text-white" : "bg-indigo-600 text-white"
+                  }`}
+                >
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
           </div>
-        )}
+        </div>
 
         <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
           {/* Main Job Listings Column */}
           <div className="flex-1 space-y-3">
-            {isDataLoading ? (
-              <JobsLoadingState activeTab={activeTab} keyword={activeKeyword} />
+            {/* Search tab's primary control. Bigger and styled like a real
+                search bar so it reads as the page's main action when this
+                tab is selected. Submit (Enter or button) sets searchKeyword,
+                which the fetch effect picks up. */}
+            {activeTab === "search" && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const trimmed = searchInput.trim();
+                  if (!trimmed || trimmed === searchKeyword) return;
+                  setSearchKeyword(trimmed);
+                }}
+                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-2 flex items-center gap-2 mb-1"
+              >
+                <Search className="w-4 h-4 text-slate-400 ml-2 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Search jobs by title, role, or technology…"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="flex-1 outline-none py-2 text-sm text-slate-900 font-medium bg-transparent"
+                />
+                {searchKeyword && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput("");
+                      setSearchKeyword("");
+                      setAllJobs([]);
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={!searchInput.trim() || searchInput.trim() === searchKeyword}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Search
+                </button>
+              </form>
+            )}
+
+            {/* Search tab with nothing submitted yet → friendly empty prompt
+                instead of a "no results" card. Skipped on the For You tab
+                because that fetches automatically on mount. */}
+            {activeTab === "search" && !searchKeyword && !isDataLoading ? (
+              <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center shadow-sm">
+                <Search className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-base font-bold text-slate-800 mb-1">Search for jobs</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  Type a role, skill, or keyword above. The filter sidebar still applies to the results.
+                </p>
+              </div>
+            ) : error ? (
+              <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center shadow-sm">
+                <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4 animate-in zoom-in duration-300" />
+                <h3 className="text-base font-bold text-slate-800 mb-1">
+                  {activeTab === "for-you"
+                    ? "Couldn't score your matches"
+                    : "Couldn't load search results"}
+                </h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5">
+                  {error}
+                </p>
+                <button
+                  onClick={() => fetchJobsData(true)}
+                  disabled={isDataLoading || (refreshQuota !== null && refreshQuota.remaining === 0)}
+                  title={
+                    refreshQuota !== null && refreshQuota.remaining === 0
+                      ? "Daily refresh limit reached. Resets at midnight UTC."
+                      : undefined
+                  }
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isDataLoading ? "animate-spin" : ""}`} />
+                  {refreshQuota !== null && refreshQuota.remaining === 0
+                    ? "Daily limit reached"
+                    : "Try Again"}
+                  {refreshQuota !== null && refreshQuota.remaining > 0 && refreshQuota.used > 0 && (
+                    <span className="ml-1 opacity-80">({refreshQuota.remaining} left)</span>
+                  )}
+                </button>
+              </div>
+            ) : isDataLoading ? (
+              <JobsLoadingState
+                activeTab={activeTab}
+                keyword={activeTab === "search" ? searchKeyword || null : activeKeyword}
+              />
             ) : filteredJobsList.length === 0 ? (
               (() => {
-                const sourceList = activeTab === "matches" ? matches : allJobs;
+                const sourceList = activeTab === "for-you" ? matches : allJobs;
                 const sourceEmpty = sourceList.length === 0;
-                const isFiltered = searchQuery.trim() !== "" || locationQuery.trim() !== "";
+                const isFiltered = activeFilterCount > 0;
+
+                // For You with no resume on file → a friendly upload CTA,
+                // not the generic "couldn't score" error. The matcher needs
+                // a resume to work; tell users that directly.
+                if (activeTab === "for-you" && resumes.length === 0) {
+                  return (
+                    <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center shadow-sm">
+                      <Sparkles className="w-12 h-12 text-indigo-400 mx-auto mb-4" />
+                      <h3 className="text-base font-bold text-slate-800 mb-1">
+                        Upload a resume to unlock For You
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5">
+                        The For You feed matches jobs against your resume's skills and target title.
+                        Add one to see personalized roles here.
+                      </p>
+                      <button
+                        onClick={() => navigate("/dashboard/builder")}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Build a resume
+                      </button>
+                    </div>
+                  );
+                }
 
                 // Source-empty + no filter → likely an AI/RapidAPI hiccup, not a real zero-result.
                 if (sourceEmpty && !isFiltered) {
@@ -530,20 +745,32 @@ export function Jobs() {
                     <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center shadow-sm">
                       <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-4" />
                       <h3 className="text-base font-bold text-slate-800 mb-1">
-                        {activeTab === "matches" ? "Couldn't score your matches" : "Couldn't load roles"}
+                        {activeTab === "for-you"
+                          ? "Couldn't score your matches"
+                          : `No results for “${searchKeyword}”`}
                       </h3>
                       <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5">
-                        {activeTab === "matches"
+                        {activeTab === "for-you"
                           ? "The AI matcher is temporarily unavailable. This usually clears in a few seconds."
-                          : "We couldn't pull roles from the job source right now. Try again in a moment."}
+                          : "Try a different keyword, or click Try Again to fetch fresh listings from the source."}
                       </p>
                       <button
                         onClick={() => fetchJobsData(true)}
-                        disabled={isDataLoading}
+                        disabled={isDataLoading || (refreshQuota !== null && refreshQuota.remaining === 0)}
+                        title={
+                          refreshQuota !== null && refreshQuota.remaining === 0
+                            ? "Daily refresh limit reached. Resets at midnight UTC."
+                            : undefined
+                        }
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isDataLoading ? "animate-spin" : ""}`} />
-                        Try Again
+                        {refreshQuota !== null && refreshQuota.remaining === 0
+                          ? "Daily limit reached"
+                          : "Try Again"}
+                        {refreshQuota !== null && refreshQuota.remaining > 0 && refreshQuota.used > 0 && (
+                          <span className="ml-1 opacity-80">({refreshQuota.remaining} left)</span>
+                        )}
                       </button>
                     </div>
                   );
@@ -561,14 +788,14 @@ export function Jobs() {
             ) : (
               paginatedJobsList.map(item => {
                 // In matches view, item is the match object containing the nested job
-                const job: Job = activeTab === "matches" ? (item as any).job : (item as any);
+                const job: Job = activeTab === "for-you" ? (item as any).job : (item as any);
                 if (!job) return null;
-                const matchScore = activeTab === "matches" ? (item as any).score : null;
+                const matchScore = activeTab === "for-you" ? (item as any).score : null;
 
                 return (
                   <div 
                     key={job._id} 
-                    onClick={() => handleOpenJob(job, activeTab === "matches" ? {
+                    onClick={() => handleOpenJob(job, activeTab === "for-you" ? {
                       score: (item as any).score,
                       reasoning: (item as any).reasoning,
                       strengths: (item as any).strengths,
@@ -577,27 +804,11 @@ export function Jobs() {
                     className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all cursor-pointer group"
                   >
                     <div className="flex gap-4">
-                      {/* Logo container */}
-                      <div className="w-11 h-11 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
-                        {job.logo ? (
-                          <img src={job.logo} alt={job.company} className="w-full h-full object-contain" />
-                        ) : job.company ? (
-                          <img 
-                            src={`https://logo.clearbit.com/${job.company.toLowerCase().replace(/[^a-z0-9]/g, "")}.com`} 
-                            alt={job.company} 
-                            className="w-full h-full object-contain"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                              const parent = e.currentTarget.parentElement;
-                              if (parent) {
-                                parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-indigo-50 text-indigo-600 font-bold text-xs">${job.company?.charAt(0) || ''}</div>`;
-                              }
-                            }}
-                          />
-                        ) : (
-                          <Building2 className="w-5 h-5 text-slate-400" />
-                        )}
-                      </div>
+                      <CompanyLogo
+                        company={job.company}
+                        logo={job.logo}
+                        className="w-11 h-11"
+                      />
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
@@ -685,38 +896,154 @@ export function Jobs() {
             )}
           </div>
 
-          {/* Right Filters Panel */}
-          <div className="w-full lg:w-64 shrink-0 lg:block">
+          {/* Right Filters Panel.
+              On desktop (lg+) this column always renders to the right of
+              the listings.
+              On mobile we hide it unless the user opens it from the tab-bar
+              toggle; when shown, `order-first` floats it above the listings
+              so they don't have to scroll past results to reach the filters. */}
+          <div
+            id="jobs-filter-panel"
+            className={`w-full lg:w-64 shrink-0 lg:block lg:order-none ${
+              filtersOpen ? "block order-first" : "hidden"
+            }`}
+          >
             <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-              <div className="flex items-center gap-2 mb-4 text-slate-600 font-semibold text-[11px] uppercase tracking-wider">
-                <SlidersHorizontal className="w-3.5 h-3.5" /> Filter by
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2 text-slate-600 font-semibold text-[11px] uppercase tracking-wider">
+                  <SlidersHorizontal className="w-3.5 h-3.5" /> Filter by
+                  {activeFilterCount > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-extrabold">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </div>
+                {activeFilterCount > 0 && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
 
-              <div className="border-b border-slate-100 pb-3">
-                <button 
+              {/* Job Type */}
+              <div className="border-b border-slate-100 pb-3 mb-3">
+                <button
                   onClick={() => setJobTypeOpen(!jobTypeOpen)}
-                  className="flex items-center justify-between w-full py-2 hover:no-underline font-semibold text-sm text-slate-800 text-left cursor-pointer"
+                  className="flex items-center justify-between w-full py-1 font-semibold text-sm text-slate-800 text-left cursor-pointer"
                 >
                   <span>Job Type</span>
                   <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${jobTypeOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {jobTypeOpen && (
                   <div className="pt-1.5 pb-1 space-y-2.5 animate-in fade-in duration-200">
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900">
-                      <input type="checkbox" defaultChecked className="rounded text-indigo-600 focus:ring-indigo-500" />
-                      Full-time
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900">
-                      <input type="checkbox" defaultChecked className="rounded text-indigo-600 focus:ring-indigo-500" />
-                      Contract
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900">
-                      <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500" />
-                      Part-time
-                    </label>
+                    {EMPLOYMENT_LABELS.map((label) => {
+                      const checked = employmentTypes.has(label);
+                      return (
+                        <label
+                          key={label}
+                          className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setEmploymentTypes((prev) => {
+                                const next = new Set(prev);
+                                if (checked) next.delete(label);
+                                else next.add(label);
+                                return next;
+                              });
+                            }}
+                            className="rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          {label}
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
               </div>
+
+              {/* Remote */}
+              <div className="border-b border-slate-100 pb-3 mb-3">
+                <button
+                  onClick={() => setLocationOpen(!locationOpen)}
+                  className="flex items-center justify-between w-full py-1 font-semibold text-sm text-slate-800 text-left cursor-pointer"
+                >
+                  <span>Location</span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${locationOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {locationOpen && (
+                  <div className="pt-1.5 pb-1 space-y-2.5 animate-in fade-in duration-200">
+                    {([
+                      { value: "all", label: "Any" },
+                      { value: "remote", label: "Remote only" },
+                      { value: "onsite", label: "On-site only" },
+                    ] as const).map((opt) => (
+                      <label
+                        key={opt.value}
+                        className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900"
+                      >
+                        <input
+                          type="radio"
+                          name="remote-filter"
+                          checked={remoteFilter === opt.value}
+                          onChange={() => setRemoteFilter(opt.value)}
+                          className="text-indigo-600 focus:ring-indigo-500"
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Salary floor */}
+              <div>
+                <button
+                  onClick={() => setSalaryOpen(!salaryOpen)}
+                  className="flex items-center justify-between w-full py-1 font-semibold text-sm text-slate-800 text-left cursor-pointer"
+                >
+                  <span>Minimum salary</span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${salaryOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {salaryOpen && (
+                  <div className="pt-2 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-500">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={5}
+                        placeholder="e.g. 80"
+                        value={minSalaryK ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setMinSalaryK(v === "" ? null : Math.max(0, parseInt(v, 10) || 0));
+                        }}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300"
+                      />
+                      <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">k / yr</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1.5">
+                      Jobs without a posted salary are hidden when this is set.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Mobile-only Done button — quickest way to dismiss the
+                  filter panel after applying. On desktop the panel is
+                  always docked, so the button has no purpose there. */}
+              <button
+                onClick={() => setFiltersOpen(false)}
+                className="lg:hidden w-full mt-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
@@ -735,26 +1062,11 @@ export function Jobs() {
             {/* Modal Header */}
             <div className="flex items-start justify-between px-6 sm:px-8 py-5 border-b border-slate-100 bg-white sticky top-0 z-10">
               <div className="flex gap-4 items-center">
-                <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-                  {selectedJob.logo ? (
-                    <img src={selectedJob.logo} alt={selectedJob.company} className="w-full h-full object-contain" />
-                  ) : selectedJob.company ? (
-                    <img 
-                      src={`https://logo.clearbit.com/${selectedJob.company.toLowerCase().replace(/[^a-z0-9]/g, "")}.com`} 
-                      alt={selectedJob.company} 
-                      className="w-full h-full object-contain"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const parent = e.currentTarget.parentElement;
-                        if (parent) {
-                          parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-indigo-50 text-indigo-600 font-bold text-sm">${selectedJob.company?.charAt(0) || ''}</div>`;
-                        }
-                      }}
-                    />
-                  ) : (
-                    <Building2 className="w-6 h-6 text-slate-400" />
-                  )}
-                </div>
+                <CompanyLogo
+                  company={selectedJob.company}
+                  logo={selectedJob.logo}
+                  className="w-12 h-12"
+                />
                 <div>
                   <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">{selectedJob.title}</h2>
                   <p className="text-xs font-semibold text-slate-500">

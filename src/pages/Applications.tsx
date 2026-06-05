@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  Briefcase, Building2, Clock, Loader2, Trash2, ChevronDown,
-  ClipboardList,
+  Briefcase, Clock, Loader2, Trash2, ChevronDown,
+  ClipboardList, X, ExternalLink,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CompanyLogo } from "../components/CompanyLogo";
 
 type Status = "saved" | "applied" | "interviewing" | "offer" | "rejected";
 
@@ -41,6 +44,9 @@ export function Applications() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
   const [pendingId, setPendingId] = useState<string | null>(null);
+  // Only saved-status rows open this; other statuses (applied, etc.) stay
+  // display-only because the user has already moved past "save then apply".
+  const [selectedJob, setSelectedJob] = useState<any | null>(null);
 
   const fetchApps = async () => {
     try {
@@ -188,21 +194,19 @@ export function Applications() {
           {visibleApps.map((app) => {
             const job = app.job;
             const isPending = pendingId === app._id;
+            const isSaved = app.status === "saved";
             const updated = new Date(app.updatedAt).toLocaleDateString(undefined, {
               month: "short", day: "numeric",
             });
             return (
               <div
                 key={app._id}
-                className="flex items-center gap-4 p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-all"
+                onClick={isSaved && job ? () => setSelectedJob(job) : undefined}
+                className={`flex items-center gap-4 p-4 bg-white border border-slate-100 rounded-2xl shadow-sm transition-all ${
+                  isSaved && job ? "hover:shadow-md hover:border-indigo-200 cursor-pointer" : ""
+                }`}
               >
-                <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center shrink-0 border border-slate-100 overflow-hidden">
-                  {job?.logo ? (
-                    <img src={job.logo} alt={job.company} className="w-full h-full object-contain" />
-                  ) : (
-                    <Building2 className="w-5 h-5 text-slate-400" />
-                  )}
-                </div>
+                <CompanyLogo company={job?.company} logo={job?.logo} className="w-10 h-10" />
 
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-bold text-slate-900 truncate">
@@ -218,7 +222,7 @@ export function Applications() {
                 </div>
 
                 {/* Status dropdown */}
-                <div className="relative shrink-0">
+                <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
                   <select
                     value={app.status}
                     disabled={isPending}
@@ -233,7 +237,7 @@ export function Applications() {
                 </div>
 
                 <button
-                  onClick={() => handleRemove(app._id)}
+                  onClick={(e) => { e.stopPropagation(); handleRemove(app._id); }}
                   disabled={isPending}
                   className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 cursor-pointer shrink-0"
                   title="Remove from tracker"
@@ -243,6 +247,104 @@ export function Applications() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {selectedJob && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6"
+          onClick={() => setSelectedJob(null)}
+        >
+          <div
+            className="bg-white w-full max-w-3xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between px-6 sm:px-8 py-5 border-b border-slate-100 bg-white sticky top-0 z-10">
+              <div className="flex gap-4 items-center min-w-0">
+                <CompanyLogo
+                  company={selectedJob.company}
+                  logo={selectedJob.logo}
+                  className="w-12 h-12"
+                />
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug truncate">{selectedJob.title}</h2>
+                  <p className="text-xs font-semibold text-slate-500 truncate">
+                    {selectedJob.company || "Unknown Company"} &bull; {selectedJob.location || "Anywhere"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedJob(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 cursor-pointer shrink-0"
+                aria-label="Close details"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
+              <div className="flex flex-wrap gap-2 pb-4 border-b border-slate-100">
+                {selectedJob.remote && (
+                  <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100">
+                    {selectedJob.remote_type || "Remote"}
+                  </span>
+                )}
+                {selectedJob.employment_type && (
+                  <span className="px-2.5 py-1 bg-slate-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-100">
+                    {selectedJob.employment_type}
+                  </span>
+                )}
+                {selectedJob.salary_min && (
+                  <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-100">
+                    Salary: {selectedJob.salary_currency || "$"}{Math.round(selectedJob.salary_min / 1000)}k - {selectedJob.salary_max ? `${Math.round(selectedJob.salary_max / 1000)}k` : "Open"}
+                  </span>
+                )}
+              </div>
+
+              <div className="prose prose-slate max-w-none text-slate-800 text-sm whitespace-pre-line">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    h1: ({node, ...props}) => <h1 className="text-base font-extrabold text-slate-900 mt-6 mb-2.5 border-b pb-1 border-slate-100" {...props} />,
+                    h2: ({node, ...props}) => <h2 className="text-[15px] font-bold text-slate-900 mt-5 mb-2 border-b pb-0.5 border-slate-100" {...props} />,
+                    h3: ({node, ...props}) => <h3 className="text-sm font-bold text-slate-850 mt-4 mb-1.5" {...props} />,
+                    p: ({node, ...props}) => <p className="text-[12.5px] text-slate-600 leading-relaxed mb-3.5 whitespace-pre-line" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc pl-5 space-y-1 mb-4 text-[12.5px] text-slate-600" {...props} />,
+                    ol: ({node, ...props}) => <ol className="list-decimal pl-5 space-y-1 mb-4 text-[12.5px] text-slate-600" {...props} />,
+                    li: ({node, ...props}) => <li className="leading-relaxed" {...props} />,
+                    strong: ({node, ...props}) => <strong className="font-semibold text-slate-950" {...props} />,
+                  }}
+                >
+                  {selectedJob.description}
+                </ReactMarkdown>
+              </div>
+            </div>
+
+            {/* Footer with Apply CTA */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sticky bottom-0 z-20">
+              <div className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Posted {selectedJob.postedAt ? new Date(selectedJob.postedAt).toLocaleDateString() : "Recently"}</span>
+              </div>
+              {selectedJob.url ? (
+                <a
+                  href={selectedJob.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-all hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                >
+                  Apply on Company Site
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              ) : (
+                <span className="text-xs font-semibold text-slate-400 italic">
+                  Apply link not available
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

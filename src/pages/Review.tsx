@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
-import { AlertCircle, ArrowLeft, Info, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Download, Info, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useResumeData } from "../types";
 import { ResumePreview } from "../components/ResumePreview";
@@ -42,6 +42,10 @@ export function Review() {
   const [optimizedData, setOptimizedData] = useState<any>(null);
   const [showOptimized, setShowOptimized] = useState(false);
   const [optimizationError, setOptimizationError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  // Cache the signed download URL by content hash so back-to-back clicks on
+  // the same resume don't re-generate the PDF on the backend.
+  const [cachedDownload, setCachedDownload] = useState<{ hash: string; url: string } | null>(null);
 
   const [job, setJob] = useState<any>(null);
   const [isLoadingJob, setIsLoadingJob] = useState(false);
@@ -220,6 +224,59 @@ export function Review() {
     alert("Optimization applied successfully! Your resume has been updated.");
   };
 
+  // Download whatever's currently displayed (optimized if user is viewing it,
+  // otherwise the original). Caches the signed URL by content hash so a
+  // toggle-back-and-forth doesn't re-trigger PDF generation on the backend.
+  const handleDownload = async () => {
+    const dataToDownload = showOptimized && optimizedData ? optimizedData : resumeData;
+    if (!dataToDownload?.personalInfo) return;
+
+    const currentHash = JSON.stringify(dataToDownload);
+    const filename = `${dataToDownload.personalInfo.fullName || "resume"}.pdf`;
+
+    const trigger = (href: string) => {
+      const a = document.createElement("a");
+      a.href = href;
+      a.target = "_blank";
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+
+    if (cachedDownload && cachedDownload.hash === currentHash) {
+      trigger(cachedDownload.url);
+      return;
+    }
+
+    try {
+      setIsDownloading(true);
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/download`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("jobplotter_token")}`,
+          },
+          body: JSON.stringify({ resumeData: dataToDownload }),
+        }
+      );
+      if (!response.ok) throw new Error("Download failed");
+
+      const data = await response.json();
+      if (!data.downloadUrl) throw new Error("No download URL returned");
+
+      setCachedDownload({ hash: currentHash, url: data.downloadUrl });
+      trigger(data.downloadUrl);
+    } catch (err) {
+      console.error("PDF Generation Error:", err);
+      alert("Failed to generate PDF. Please try again.");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   // Sync with savedReview when it loads
   useEffect(() => {
     if (savedReview) {
@@ -287,7 +344,7 @@ export function Review() {
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 overflow-hidden">
-      <header className="h-14 shrink-0 border-b border-slate-200 bg-white px-4 sm:px-6 flex items-center">
+      <header className="h-14 shrink-0 border-b border-slate-200 bg-white px-4 sm:px-6 flex items-center justify-between">
         <Link
           to="/dashboard/jobs"
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
@@ -295,6 +352,19 @@ export function Review() {
           <ArrowLeft className="w-3.5 h-3.5" />
           Back to Jobs
         </Link>
+        <button
+          onClick={handleDownload}
+          disabled={isDownloading}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+          title={showOptimized && optimizedData ? "Download the optimized resume" : "Download this resume"}
+        >
+          {isDownloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          {isDownloading
+            ? "Generating PDF…"
+            : showOptimized && optimizedData
+            ? "Download optimized"
+            : "Download"}
+        </button>
       </header>
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left Pane: Document Preview */}

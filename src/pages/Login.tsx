@@ -77,7 +77,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-slate-100">
         <div>
-          <Link to="/" className="mx-auto w-12 h-12 flex items-center justify-center mb-6">
+          <Link to="/" className="mx-auto w-12 h-12 flex items-center justify-center mb-6 cursor-pointer">
             <img src="/favicon-black.png" alt="Jobplotter Logo" className="w-12 h-12 object-contain" />
           </Link>
           <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -85,7 +85,7 @@ export default function Login() {
           </h2>
           <p className="mt-2 text-center text-sm text-slate-500">
             Don't have an account?{" "}
-            <Link to="/signup" className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+            <Link to="/signup" className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors cursor-pointer">
               Sign up
             </Link>
           </p>
@@ -108,7 +108,7 @@ export default function Login() {
               type="button"
               onClick={handleGoogleSignIn}
               disabled={loading || googleLoading || isFinalizingGoogle}
-              className="w-full inline-flex justify-center items-center py-2.5 px-4 border border-slate-300 rounded-lg shadow-sm bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+              className="w-full inline-flex justify-center items-center py-2.5 px-4 border border-slate-300 rounded-lg shadow-sm bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {googleLoading ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600 mr-2" />
@@ -195,7 +195,7 @@ export default function Login() {
               </div>
 
               <div className="text-sm">
-                <Link to="/forgot-password" global-title="Forgot password" className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                <Link to="/forgot-password" global-title="Forgot password" className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors cursor-pointer">
                   Forgot your password?
                 </Link>
               </div>
@@ -205,7 +205,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading || googleLoading}
-                className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all hover:shadow-lg cursor-pointer disabled:opacity-50"
+                className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all hover:shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? "Signing in..." : "Sign in"}
               </button>

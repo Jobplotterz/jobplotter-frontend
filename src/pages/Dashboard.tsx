@@ -1,15 +1,12 @@
 import { useState, useEffect } from "react";
 import {
-  FileText, Sparkles, Plus, Upload, LayoutDashboard, User as UserIcon, Briefcase, X, Pencil, Clock, Building2, ExternalLink, Bookmark, BookmarkCheck
+  FileText, Sparkles, Plus, Upload, LayoutDashboard, User as UserIcon, Briefcase, X, Pencil, Clock, Building2
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import { ResumePreview } from "@/components/ResumePreview";
 import { initialResumeData, ResumeData } from "@/types";
-import { useJobTracker } from "../hooks/useJobTracker";
 
 type ActiveTab = "overview" | "resumes";
 
@@ -29,7 +26,6 @@ function parseResumeData(resume: any): ResumeData {
 
 export function Dashboard() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [resumes, setResumes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -38,8 +34,6 @@ export function Dashboard() {
 
   const [recentVisits, setRecentVisits] = useState<any[]>([]);
   const [isVisitsLoading, setIsVisitsLoading] = useState(true);
-  const [selectedJob, setSelectedJob] = useState<any | null>(null);
-  const { tracked, isSaving: isTracking, track } = useJobTracker(selectedJob?._id);
 
   const fetchRecentVisits = async () => {
     try {
@@ -243,8 +237,7 @@ export function Dashboard() {
                       return (
                         <div
                           key={visit._id}
-                          onClick={() => setSelectedJob(job)}
-                          className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group cursor-pointer"
+                          className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm"
                         >
                           <div className="flex items-center gap-4 min-w-0">
                             <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center shrink-0 border border-slate-100 overflow-hidden">
@@ -268,7 +261,7 @@ export function Dashboard() {
                               )}
                             </div>
                             <div className="min-w-0">
-                              <h3 className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+                              <h3 className="text-sm font-bold text-slate-900 truncate">
                                 {job.title}
                               </h3>
                               <p className="text-xs font-semibold text-slate-500 truncate">
@@ -399,160 +392,6 @@ export function Dashboard() {
             </div>
             <div className="flex-1 overflow-y-auto">
               <ResumePreview data={parseResumeData(previewResume)} />
-            </div>
-          </div>
-        </div>
-      )}
-      {selectedJob && (
-        <div 
-          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6"
-          onClick={() => setSelectedJob(null)}
-        >
-          <div 
-            className="bg-white w-full max-w-3xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-start justify-between px-6 sm:px-8 py-5 border-b border-slate-100 bg-white sticky top-0 z-10">
-              <div className="flex gap-4 items-center">
-                <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-                  {selectedJob.logo ? (
-                    <img src={selectedJob.logo} alt={selectedJob.company} className="w-full h-full object-contain" />
-                  ) : selectedJob.company ? (
-                    <img 
-                      src={`https://logo.clearbit.com/${selectedJob.company.toLowerCase().replace(/[^a-z0-9]/g, "")}.com`} 
-                      alt={selectedJob.company} 
-                      className="w-full h-full object-contain"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const parent = e.currentTarget.parentElement;
-                        if (parent) {
-                          parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-indigo-50 text-indigo-600 font-bold text-sm">${selectedJob.company?.charAt(0) || ''}</div>`;
-                        }
-                      }}
-                    />
-                  ) : (
-                    <Building2 className="w-6 h-6 text-slate-400" />
-                  )}
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">{selectedJob.title}</h2>
-                  <p className="text-xs font-semibold text-slate-500">
-                    {selectedJob.company || "Unknown Company"} &bull; {selectedJob.location || "Anywhere"}
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setSelectedJob(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 cursor-pointer"
-                aria-label="Close details"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
-              {/* Meta details */}
-              <div className="flex flex-wrap gap-2 pb-4 border-b border-slate-100">
-                {selectedJob.remote && (
-                  <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100">
-                    {selectedJob.remote_type || "Remote"}
-                  </span>
-                )}
-                {selectedJob.employment_type && (
-                  <span className="px-2.5 py-1 bg-slate-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-100">
-                    {selectedJob.employment_type}
-                  </span>
-                )}
-                {selectedJob.salary_min && (
-                  <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-100">
-                    Salary: {selectedJob.salary_currency || "$"}{Math.round(selectedJob.salary_min / 1000)}k - {selectedJob.salary_max ? `${Math.round(selectedJob.salary_max / 1000)}k` : "Open"}
-                  </span>
-                )}
-              </div>
-
-              {/* Job Description (Markdown) */}
-              <div className="prose prose-slate max-w-none text-slate-800 text-sm whitespace-pre-line">
-                <ReactMarkdown 
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    h1: ({node, ...props}) => <h1 className="text-base font-extrabold text-slate-900 mt-6 mb-2.5 border-b pb-1 border-slate-100" {...props} />,
-                    h2: ({node, ...props}) => <h2 className="text-[15px] font-bold text-slate-900 mt-5 mb-2 border-b pb-0.5 border-slate-100" {...props} />,
-                    h3: ({node, ...props}) => <h3 className="text-sm font-bold text-slate-850 mt-4 mb-1.5" {...props} />,
-                    p: ({node, ...props}) => <p className="text-[12.5px] text-slate-600 leading-relaxed mb-3.5 whitespace-pre-line" {...props} />,
-                    ul: ({node, ...props}) => <ul className="list-disc pl-5 space-y-1 mb-4 text-[12.5px] text-slate-600" {...props} />,
-                    ol: ({node, ...props}) => <ol className="list-decimal pl-5 space-y-1 mb-4 text-[12.5px] text-slate-600" {...props} />,
-                    li: ({node, ...props}) => <li className="leading-relaxed" {...props} />,
-                    strong: ({node, ...props}) => <strong className="font-semibold text-slate-950" {...props} />,
-                  }}
-                >
-                  {selectedJob.description}
-                </ReactMarkdown>
-              </div>
-            </div>
-
-            {/* Apply & Optimize Button Footer */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sticky bottom-0 z-20">
-              <div className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" />
-                <span>Posted {selectedJob.postedAt ? new Date(selectedJob.postedAt).toLocaleDateString() : "Recently"}</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                {tracked ? (
-                  <span
-                    title="Already in your tracker — manage it on the Applications page"
-                    className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-xl"
-                  >
-                    <BookmarkCheck className="w-3.5 h-3.5" />
-                    Tracked
-                  </span>
-                ) : (
-                  <button
-                    onClick={track}
-                    disabled={isTracking}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <Bookmark className="w-3.5 h-3.5" />
-                    {isTracking ? "Tracking…" : "Track Job"}
-                  </button>
-                )}
-                {resumes.length > 0 ? (
-                  <button
-                    onClick={() => {
-                      navigate(
-                        `/dashboard/review?id=${activeResume._id}&jobId=${selectedJob._id}`,
-                        { state: { job: selectedJob } }
-                      );
-                    }}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md shadow-indigo-100 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-white" />
-                    Optimize Resume
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      navigate("/dashboard/builder");
-                    }}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-slate-100 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-200 transition-all cursor-pointer border border-slate-200/60"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-white" />
-                    Upload Resume to Optimize
-                  </button>
-                )}
-                {selectedJob.url && (
-                  <a 
-                    href={selectedJob.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white text-slate-700 border border-slate-200 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
-                  >
-                    Apply on Company Site
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
-              </div>
             </div>
           </div>
         </div>

@@ -105,7 +105,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || "Invalid email or password");
+      // Backend signals an unverified account with a structured detail.
+      // Treat it as a routing event, not an error: send the user to the
+      // verify page (backend already re-issued an OTP).
+      const detail = errorData?.detail;
+      if (
+        response.status === 403 &&
+        detail &&
+        typeof detail === "object" &&
+        detail.code === "email_not_verified"
+      ) {
+        const targetEmail = detail.email || email;
+        navigate(`/verify-email?email=${encodeURIComponent(targetEmail)}`, { replace: true });
+        return;
+      }
+      // FastAPI default error shape is { detail: string } — preserve that
+      // path so wrong-password etc. still surface a readable message.
+      const msg =
+        typeof detail === "string"
+          ? detail
+          : detail?.message || "Invalid email or password";
+      throw new Error(msg);
     }
 
     const data = await response.json();
@@ -130,11 +150,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [navigate]);
 
   const forgotPassword = useCallback(async (email: string) => {
-    await fetch(`${API_URL}/auth/forgot-password`, {
+    const response = await fetch(`${API_URL}/auth/forgot-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
+    // Previously this swallowed all errors — a 404 from a missing
+    // endpoint showed up as "Check your email" with nothing sent. Surface
+    // the real status so the UI can show the user a useful message.
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || "Couldn't send reset link. Try again in a moment.");
+    }
   }, []);
 
   const resetPassword = useCallback(async (password: string, token: string) => {

@@ -27,7 +27,7 @@ export default function ForgotPassword() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-slate-100">
         <div className="text-center">
-          <Link to="/" className="mx-auto w-12 h-12 flex items-center justify-center mb-6">
+          <Link to="/" className="mx-auto w-12 h-12 flex items-center justify-center mb-6 cursor-pointer">
             <img src="/favicon-black.png" alt="Jobplotter Logo" className="w-12 h-12 object-contain" />
           </Link>
           <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -52,7 +52,7 @@ export default function ForgotPassword() {
             </div>
             <Link
               to="/login"
-              className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-md"
+              className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-md cursor-pointer"
             >
               Back to login
             </Link>
@@ -77,13 +77,13 @@ export default function ForgotPassword() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all hover:shadow-lg disabled:opacity-50"
+              className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all hover:shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "Sending..." : "Send Reset Link"}
             </button>
 
             <div className="text-center">
-              <Link to="/login" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+              <Link to="/login" className="text-sm font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer">
                 ← Back to login
               </Link>
             </div>

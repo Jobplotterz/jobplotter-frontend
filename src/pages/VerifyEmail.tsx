@@ -2,6 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+// Stop users from spamming the Resend button — every click sends an
+// email. 30s gives ZeptoMail time to deliver before a retry makes sense.
+const RESEND_COOLDOWN_SECONDS = 30;
+
 export default function VerifyEmail() {
   const { verifyEmail } = useAuth();
   const navigate = useNavigate();
@@ -12,7 +17,33 @@ export default function VerifyEmail() {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resendCooldown, setResendCooldown] = useState(0);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Tick the cooldown timer down to 0 once Resend was used.
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const id = setInterval(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearInterval(id);
+  }, [resendCooldown]);
+
+  const handleResend = async () => {
+    if (!email || resendCooldown > 0 || resendStatus === "sending") return;
+    setResendStatus("sending");
+    try {
+      const res = await fetch(`${API_URL}/auth/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) throw new Error("Failed to resend");
+      setResendStatus("sent");
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch {
+      setResendStatus("error");
+    }
+  };
 
   useEffect(() => {
     if (!email) {
@@ -99,21 +130,42 @@ export default function VerifyEmail() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all hover:shadow-lg disabled:opacity-50"
+            className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all hover:shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Verifying..." : "Verify Account"}
           </button>
 
-          <p className="text-center text-sm text-slate-500">
-            Didn't receive the code?{" "}
-            <button type="button" className="font-medium text-indigo-600 hover:text-indigo-500">
-              Resend code
-            </button>
-          </p>
+          <div className="text-center text-sm text-slate-500 space-y-1">
+            <p>
+              Didn't receive the code?{" "}
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resendStatus === "sending" || resendCooldown > 0}
+                className="font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer disabled:text-slate-400 disabled:cursor-not-allowed"
+              >
+                {resendStatus === "sending"
+                  ? "Sending…"
+                  : resendCooldown > 0
+                  ? `Resend in ${resendCooldown}s`
+                  : "Resend code"}
+              </button>
+            </p>
+            {resendStatus === "sent" && resendCooldown > 0 && (
+              <p className="text-emerald-600 text-xs font-semibold">
+                New code sent. Check your inbox.
+              </p>
+            )}
+            {resendStatus === "error" && (
+              <p className="text-red-600 text-xs font-semibold">
+                Couldn't send a new code. Try again in a moment.
+              </p>
+            )}
+          </div>
         </form>
 
         <div className="text-center mt-4">
-          <Link to="/signup" className="text-sm font-medium text-slate-500 hover:text-slate-700">
+          <Link to="/signup" className="text-sm font-medium text-slate-500 hover:text-slate-700 cursor-pointer">
             ← Back to signup
           </Link>
         </div>

@@ -43,7 +43,7 @@ export default function ResetPassword() {
         <div className="max-w-md w-full bg-white p-10 rounded-2xl shadow-xl border border-slate-100 text-center">
           <h2 className="text-2xl font-bold text-slate-900 mb-4">Invalid Reset Link</h2>
           <p className="text-slate-500 mb-6">This password reset link is invalid or has expired.</p>
-          <Link to="/forgot-password" className="inline-block px-8 py-3 bg-indigo-600 text-white rounded-lg font-semibold shadow-md">
+          <Link to="/forgot-password" className="inline-block px-8 py-3 bg-indigo-600 text-white rounded-lg font-semibold shadow-md cursor-pointer">
             Request new link
           </Link>
         </div>
@@ -106,7 +106,7 @@ export default function ResetPassword() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all hover:shadow-lg disabled:opacity-50"
+            className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all hover:shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Resetting..." : "Reset Password"}
           </button>
