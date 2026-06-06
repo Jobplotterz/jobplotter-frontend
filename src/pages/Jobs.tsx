@@ -573,12 +573,12 @@ export function Jobs() {
             Always visible regardless of resume count: a user without a
             resume can still try Search; clicking For You shows a "Upload
             a resume" empty state. */}
-        <div className="flex items-center justify-between gap-2 mb-6 border-b border-slate-200/60 pb-3">
+        <div className="flex items-center justify-between gap-4 mb-6 border-b border-slate-200/60 pb-3 overflow-x-auto scrollbar-none flex-nowrap">
           {/* Primary: mode tabs */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setActiveTab("for-you")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === "for-you"
                   ? "bg-slate-900 text-white shadow-sm"
                   : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
@@ -589,7 +589,7 @@ export function Jobs() {
             </button>
             <button
               onClick={() => setActiveTab("search")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === "search"
                   ? "bg-slate-900 text-white shadow-sm"
                   : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
@@ -601,11 +601,11 @@ export function Jobs() {
           </div>
 
           {/* Secondary: actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => fetchJobsData(true)}
               disabled={isDataLoading || (refreshQuota !== null && refreshQuota.remaining === 0)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
               title={
                 refreshQuota === null
                   ? "Force refresh (bypass cache)"
@@ -622,7 +622,7 @@ export function Jobs() {
                   the cap. */}
               {refreshQuota !== null && refreshQuota.used > 0 && (
                 <span
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap ${
                     refreshQuota.remaining === 0
                       ? "bg-slate-200 text-slate-500"
                       : "bg-indigo-50 text-indigo-700"
@@ -638,7 +638,7 @@ export function Jobs() {
               onClick={() => setFiltersOpen((v) => !v)}
               aria-expanded={filtersOpen}
               aria-controls="jobs-filter-panel"
-              className={`lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+              className={`lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
                 filtersOpen
                   ? "bg-slate-900 text-white"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -648,7 +648,7 @@ export function Jobs() {
               Filters
               {activeFilterCount > 0 && (
                 <span
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap ${
                     filtersOpen ? "bg-white/20 text-white" : "bg-indigo-600 text-white"
                   }`}
                 >
@@ -661,7 +661,7 @@ export function Jobs() {
 
         <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
           {/* Main Job Listings Column */}
-          <div className="flex-1 space-y-3">
+          <div className="flex-1 min-w-0 space-y-3">
             {/* Search tab's primary control. Bigger and styled like a real
                 search bar so it reads as the page's main action when this
                 tab is selected. Submit (Enter or button) sets searchKeyword,
@@ -942,16 +942,10 @@ export function Jobs() {
             )}
           </div>
 
-          {/* Right Filters Panel.
-              On desktop (lg+) this column always renders to the right of
-              the listings.
-              On mobile we hide it unless the user opens it from the tab-bar
-              toggle; when shown, `order-first` floats it above the listings
-              so they don't have to scroll past results to reach the filters. */}
           <div
             id="jobs-filter-panel"
-            className={`w-full lg:w-64 shrink-0 lg:block lg:order-none ${
-              filtersOpen ? "block order-first" : "hidden"
+            className={`w-full lg:w-64 shrink-0 lg:order-none ${
+              filtersOpen ? "block order-first" : "hidden lg:block"
             }`}
           >
             <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
