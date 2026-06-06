@@ -109,6 +109,17 @@ export function Jobs() {
   const [searchInput, setSearchInput] = useState<string>("");
   const [searchKeyword, setSearchKeyword] = useState<string>("");
 
+  const latestSearchKeywordRef = useRef(searchKeyword);
+  const latestActiveTabRef = useRef(activeTab);
+
+  useEffect(() => {
+    latestSearchKeywordRef.current = searchKeyword;
+  }, [searchKeyword]);
+
+  useEffect(() => {
+    latestActiveTabRef.current = activeTab;
+  }, [activeTab]);
+
   const fetchRefreshQuota = useCallback(async () => {
     try {
       const token = localStorage.getItem("jobplotter_token");
@@ -313,6 +324,10 @@ export function Jobs() {
         const response = await fetch(`${base}/jobs/matches${qs}`, { headers });
         if (response.ok) {
           const data = await response.json();
+
+          // Discard if user navigated away from the For You tab before completion
+          if (latestActiveTabRef.current !== "for-you") return;
+
           setMatches(data);
           if (Array.isArray(data) && data.length > 0) {
             localStorage.setItem(cacheKey, JSON.stringify(data));
@@ -322,7 +337,9 @@ export function Jobs() {
             localStorage.removeItem(`${cacheKey}_ts`);
           }
         } else {
-          setError("The AI matcher is temporarily unavailable. Please try again in a few seconds.");
+          if (latestActiveTabRef.current === "for-you") {
+            setError("The AI matcher is temporarily unavailable. Please try again in a few seconds.");
+          }
         }
       } else {
         // Search mode: hit /jobs/ with the user-typed keyword. Backend uses
@@ -332,6 +349,15 @@ export function Jobs() {
         const response = await fetch(`${base}/jobs/?${params.toString()}`, { headers });
         if (response.ok) {
           const data = await response.json();
+
+          // Discard if user changed the search keyword or tab before this completes (race condition)
+          if (
+            latestActiveTabRef.current !== "search" ||
+            latestSearchKeywordRef.current.trim().toLowerCase() !== searchKeyword.trim().toLowerCase()
+          ) {
+            return;
+          }
+
           setAllJobs(data);
           if (Array.isArray(data) && data.length > 0) {
             localStorage.setItem(cacheKey, JSON.stringify(data));
@@ -341,19 +367,39 @@ export function Jobs() {
             localStorage.removeItem(`${cacheKey}_ts`);
           }
         } else {
-          setError("We couldn't connect to the job search service. Please try again.");
+          if (
+            latestActiveTabRef.current === "search" &&
+            latestSearchKeywordRef.current.trim().toLowerCase() === searchKeyword.trim().toLowerCase()
+          ) {
+            setError("We couldn't connect to the job search service. Please try again.");
+          }
         }
       }
     } catch (err) {
       console.error("Failed to fetch jobs data:", err);
-      setError("A network error occurred. Please check your connection and try again.");
+      // Only set error if the search is still relevant to the user's current view
+      const isStillRelevant =
+        activeTab === latestActiveTabRef.current &&
+        (activeTab === "for-you" ||
+          latestSearchKeywordRef.current.trim().toLowerCase() === searchKeyword.trim().toLowerCase());
+      if (isStillRelevant) {
+        setError("A network error occurred. Please check your connection and try again.");
+      }
     } finally {
       setIsDataLoading(false);
       inFlightRef.current = null;
       // A forced refresh either consumed a credit or was denied; in
       // either case the server-side counter changed and we want the
       // button label to reflect that immediately.
-      if (force) fetchRefreshQuota();
+      if (force) {
+        const isStillRelevant =
+          activeTab === latestActiveTabRef.current &&
+          (activeTab === "for-you" ||
+            latestSearchKeywordRef.current.trim().toLowerCase() === searchKeyword.trim().toLowerCase());
+        if (isStillRelevant) {
+          fetchRefreshQuota();
+        }
+      }
     }
   }, [activeTab, activeResumeId, searchKeyword, fetchRefreshQuota]);
 
