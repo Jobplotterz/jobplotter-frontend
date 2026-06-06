@@ -52,17 +52,55 @@ export default function VerifyEmail() {
   }, [email, navigate]);
 
   const handleChange = (index: number, value: string) => {
-    if (value.length > 1) value = value[value.length - 1];
-    if (!/^\d*$/.test(value)) return;
+    const cleanValue = value.replace(/\D/g, "");
+    
+    // If the entered value is a 6-digit code (autofill from SMS/email)
+    if (cleanValue.length === 6) {
+      const newOtp = cleanValue.split("");
+      setOtp(newOtp);
+      inputRefs.current[5]?.focus();
+      return;
+    }
+
+    // Otherwise, treat as normal single-digit input
+    let singleDigit = cleanValue;
+    if (singleDigit.length > 1) {
+      singleDigit = singleDigit[singleDigit.length - 1];
+    }
+    
+    if (!/^\d*$/.test(singleDigit)) return;
 
     const newOtp = [...otp];
-    newOtp[index] = value;
+    newOtp[index] = singleDigit;
     setOtp(newOtp);
 
     // Auto-focus next input
-    if (value && index < 5) {
+    if (singleDigit && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData("text");
+    const digits = pastedData.replace(/\D/g, "");
+    if (!digits) return;
+
+    const newOtp = [...otp];
+    // If pasting 6 or more digits, fill from start (index 0)
+    // Otherwise, fill starting from the currently focused input index
+    const activeIndex = inputRefs.current.findIndex(el => el === document.activeElement);
+    const startIdx = digits.length >= 6 ? 0 : (activeIndex !== -1 ? activeIndex : 0);
+    
+    const digitsArr = digits.slice(0, 6 - startIdx).split("");
+    for (let i = 0; i < digitsArr.length; i++) {
+      newOtp[startIdx + i] = digitsArr[i];
+    }
+    setOtp(newOtp);
+
+    // Focus the last filled input
+    const focusIdx = Math.min(startIdx + digitsArr.length - 1, 5);
+    inputRefs.current[focusIdx]?.focus();
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -118,10 +156,11 @@ export default function VerifyEmail() {
                 ref={(el) => { inputRefs.current[index] = el; }}
                 type="text"
                 inputMode="numeric"
-                maxLength={1}
+                maxLength={6}
                 value={digit}
                 onChange={(e) => handleChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
+                onPaste={handlePaste}
                 className="w-full max-w-[3.25rem] aspect-[5/6] sm:aspect-auto sm:h-14 text-center text-xl sm:text-2xl font-bold text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
               />
             ))}
