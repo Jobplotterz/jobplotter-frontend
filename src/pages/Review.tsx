@@ -43,6 +43,10 @@ export function Review() {
   const [showOptimized, setShowOptimized] = useState(false);
   const [optimizationError, setOptimizationError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isOptimizationInferior, setIsOptimizationInferior] = useState(false);
+  const [optimizationNudgeMessage, setOptimizationNudgeMessage] = useState<string | null>(null);
+  const [pendingMatchInfo, setPendingMatchInfo] = useState<any | null>(null);
+  const [pendingReview, setPendingReview] = useState<any | null>(null);
   // Cache the signed download URL by content hash so back-to-back clicks on
   // the same resume don't re-generate the PDF on the backend.
   const [cachedDownload, setCachedDownload] = useState<{ hash: string; url: string } | null>(null);
@@ -139,6 +143,8 @@ export function Review() {
     if (!jobId) return;
     setIsOptimizing(true);
     setOptimizationError(null);
+    setIsOptimizationInferior(false);
+    setOptimizationNudgeMessage(null);
     let response: Response | null = null;
     try {
       const token = localStorage.getItem("jobplotter_token");
@@ -153,14 +159,31 @@ export function Review() {
         body: JSON.stringify({
           resumeData,
           jobId: jobId,
-          job: job || undefined
+          job: job || undefined,
+          oldScore: matchInfo?.score ?? undefined
         })
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setOptimizedData(data);
-        setShowOptimized(true);
+        const result = await response.json();
+        const oldScore = result.oldScore ?? matchInfo?.score ?? 0;
+        const newScore = result.newScore ?? 0;
+
+        if (newScore < oldScore) {
+          setIsOptimizationInferior(true);
+          setOptimizedData(null);
+          setShowOptimized(false);
+          setPendingMatchInfo(null);
+          setOptimizationNudgeMessage(
+            `Our AI analyzed options to tailor your resume for this role, but the optimized version scored lower than your current version (${newScore}% vs ${oldScore}% match). This can occur when descriptions are refined without fabricating new experience. We recommend making a manual update to your experience/skills section to tailor it closer to this role.`
+          );
+        } else {
+          setIsOptimizationInferior(false);
+          setOptimizedData(result.optimizedData);
+          setShowOptimized(true);
+          setPendingMatchInfo(result.newMatchInfo);
+          setOptimizationNudgeMessage(null);
+        }
       } else {
         throw new Error("Failed to tailor resume");
       }
@@ -176,6 +199,8 @@ export function Review() {
     if (!review) return;
     setIsOptimizing(true);
     setOptimizationError(null);
+    setIsOptimizationInferior(false);
+    setOptimizationNudgeMessage(null);
     let response: Response | null = null;
     try {
       const token = localStorage.getItem("jobplotter_token");
@@ -192,9 +217,25 @@ export function Review() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setOptimizedData(data);
-        setShowOptimized(true);
+        const result = await response.json();
+        const oldScore = result.oldScore ?? review?.overallScore ?? 0;
+        const newScore = result.newScore ?? 0;
+
+        if (newScore < oldScore) {
+          setIsOptimizationInferior(true);
+          setOptimizedData(null);
+          setShowOptimized(false);
+          setPendingReview(null);
+          setOptimizationNudgeMessage(
+            `Our AI analyzed options to optimize your resume, but the optimized version scored lower than your current version (${newScore} vs ${oldScore} recruiter impact score). This can occur when bullet points are simplified too much. We recommend making a manual update to your resume based on the detailed recruiter feedback below.`
+          );
+        } else {
+          setIsOptimizationInferior(false);
+          setOptimizedData(result.optimizedData);
+          setShowOptimized(true);
+          setPendingReview(result.newReview);
+          setOptimizationNudgeMessage(null);
+        }
       } else {
         throw new Error("Failed to optimize resume");
       }
@@ -219,6 +260,16 @@ export function Review() {
     if (!optimizedData) return;
     setResumeData(optimizedData);
     await saveToBackend(optimizedData);
+    
+    if (pendingMatchInfo) {
+      setMatchInfo(pendingMatchInfo);
+      setPendingMatchInfo(null);
+    }
+    if (pendingReview) {
+      setReview(pendingReview);
+      setPendingReview(null);
+    }
+    
     setOptimizedData(null);
     setShowOptimized(false);
     alert("Optimization applied successfully! Your resume has been updated.");
@@ -549,6 +600,27 @@ export function Review() {
                             Dismiss
                           </button>
                         </div>
+                      </div>
+                    )}
+
+                    {isOptimizationInferior && optimizationNudgeMessage && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-3 animate-in slide-in-from-top duration-300">
+                        <div className="flex gap-2.5 mb-3">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div className="text-xs text-amber-900">
+                            <p className="font-bold mb-0.5">Manual Update Recommended</p>
+                            <p className="text-amber-800 leading-relaxed">{optimizationNudgeMessage}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setIsOptimizationInferior(false);
+                            setOptimizationNudgeMessage(null);
+                          }}
+                          className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors"
+                        >
+                          Dismiss
+                        </button>
                       </div>
                     )}
 

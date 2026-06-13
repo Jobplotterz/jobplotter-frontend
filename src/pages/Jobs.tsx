@@ -72,6 +72,9 @@ export function Jobs() {
 
   const [activeTab, setActiveTab] = useState<"for-you" | "search">("for-you");
   const [resumes, setResumes] = useState<any[]>([]);
+  const activeResume = resumes.find(r => r.isDefault) || resumes[0];
+  const activeResumeId = activeResume?._id || "none";
+  const profileLocation = activeResume?.extractedData?.personalInfo?.location;
   const [matches, setMatches] = useState<Match[]>([]);
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   
@@ -88,6 +91,14 @@ export function Jobs() {
     strengths?: string[];
     gaps?: string[];
   } | null>(null);
+  const [isStructuring, setIsStructuring] = useState(false);
+  
+  const [zipCode, setZipCode] = useState<string>("");
+  const [resolvedCityState, setResolvedCityState] = useState<{ city: string; state: string } | null>(null);
+  const [isResolvingZip, setIsResolvingZip] = useState(false);
+  const [useProfileLocation, setUseProfileLocation] = useState(false);
+  const [zipError, setZipError] = useState<string | null>(null);
+  const [geoOpen, setGeoOpen] = useState(true);
   
   const [jobTypeOpen, setJobTypeOpen] = useState(true);
   // All three filter sections are collapsible for a consistent UX —
@@ -111,6 +122,7 @@ export function Jobs() {
 
   const latestSearchKeywordRef = useRef(searchKeyword);
   const latestActiveTabRef = useRef(activeTab);
+  const activeJobIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     latestSearchKeywordRef.current = searchKeyword;
@@ -145,17 +157,24 @@ export function Jobs() {
   const EMPLOYMENT_LABELS = ["Full-time", "Part-time", "Contract", "Internship"] as const;
   type EmploymentLabel = (typeof EMPLOYMENT_LABELS)[number];
   const [employmentTypes, setEmploymentTypes] = useState<Set<EmploymentLabel>>(new Set());
-  const [remoteFilter, setRemoteFilter] = useState<"all" | "remote" | "onsite">("all");
+  const [remoteFilters, setRemoteFilters] = useState<Set<"remote" | "onsite" | "hybrid">>(new Set());
   // Minimum salary in thousands per year. null = no floor.
   const [minSalaryK, setMinSalaryK] = useState<number | null>(null);
 
   const activeFilterCount =
-    employmentTypes.size + (remoteFilter !== "all" ? 1 : 0) + (minSalaryK !== null ? 1 : 0);
+    employmentTypes.size +
+    remoteFilters.size +
+    (minSalaryK !== null ? 1 : 0) +
+    (zipCode.trim().length === 5 && resolvedCityState ? 1 : 0) +
+    (useProfileLocation && activeResume?.extractedData?.personalInfo?.location ? 1 : 0);
 
   const clearFilters = () => {
     setEmploymentTypes(new Set());
-    setRemoteFilter("all");
+    setRemoteFilters(new Set());
     setMinSalaryK(null);
+    setZipCode("");
+    setUseProfileLocation(false);
+    setResolvedCityState(null);
   };
 
   // Map RapidAPI's noisy raw employment_type values (FULL_TIME, Full Time,
@@ -199,6 +218,11 @@ export function Jobs() {
         setResumes(data);
         if (data.length === 0) {
           setActiveTab("search");
+        } else {
+          const activeRes = data.find((r: any) => r.isDefault) || data[0];
+          if (activeRes?.extractedData?.personalInfo?.location) {
+            setUseProfileLocation(true);
+          }
         }
       }
     } catch (error) {
@@ -213,8 +237,51 @@ export function Jobs() {
     fetchResumes();
   }, []);
 
-  const activeResume = resumes.find(r => r.isDefault) || resumes[0];
-  const activeResumeId = activeResume?._id || "none";
+  // Resolve ZIP code to City, State
+  useEffect(() => {
+    const trimmedZip = zipCode.trim();
+    if (/^\d{5}$/.test(trimmedZip)) {
+      const resolve = async () => {
+        setIsResolvingZip(true);
+        setZipError(null);
+        try {
+          const res = await fetch(`https://api.zippopotam.us/us/${trimmedZip}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.places?.length > 0) {
+              const place = data.places[0];
+              setResolvedCityState({
+                city: place["place name"],
+                state: place["state abbreviation"]
+              });
+              setUseProfileLocation(false);
+            } else {
+              setResolvedCityState(null);
+              setZipError("ZIP code not found");
+            }
+          } else {
+            setResolvedCityState(null);
+            setZipError("Invalid ZIP code");
+          }
+        } catch (e) {
+          console.error("Failed to resolve zip code:", e);
+          setZipError("Network error checking ZIP code");
+        } finally {
+          setIsResolvingZip(false);
+        }
+      };
+      resolve();
+    } else {
+      setResolvedCityState(null);
+      if (trimmedZip.length > 0 && trimmedZip.length !== 5) {
+        setZipError("ZIP code must be 5 digits");
+      } else {
+        setZipError(null);
+      }
+    }
+  }, [zipCode]);
+
+
 
   // The keyword the backend will extract from this resume mirrors
   // extract_keywords_from_resume in jobs.py: prefer jobTitle, fall back to
@@ -320,8 +387,20 @@ export function Jobs() {
       const base = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
       if (activeTab === "for-you") {
-        const qs = force ? "?force_refresh=true" : "";
-        const response = await fetch(`${base}/jobs/matches${qs}`, { headers });
+        const params = new URLSearchParams();
+        if (force) params.set("force_refresh", "true");
+        
+        let locationParam = "";
+        if (resolvedCityState) {
+          locationParam = `${resolvedCityState.city}, ${resolvedCityState.state}`;
+        } else if (useProfileLocation && profileLocation) {
+          locationParam = profileLocation;
+        }
+        if (locationParam) {
+          params.set("location", locationParam);
+        }
+
+        const response = await fetch(`${base}/jobs/matches?${params.toString()}`, { headers });
         if (response.ok) {
           const data = await response.json();
 
@@ -346,6 +425,17 @@ export function Jobs() {
         // it as the corpus search key; no resume lookup happens.
         const params = new URLSearchParams({ keyword: searchKeyword.trim() });
         if (force) params.set("force_refresh", "true");
+        
+        let locationParam = "";
+        if (resolvedCityState) {
+          locationParam = `${resolvedCityState.city}, ${resolvedCityState.state}`;
+        } else if (useProfileLocation && activeResume?.extractedData?.personalInfo?.location) {
+          locationParam = activeResume.extractedData.personalInfo.location;
+        }
+        if (locationParam) {
+          params.set("location", locationParam);
+        }
+
         const response = await fetch(`${base}/jobs/?${params.toString()}`, { headers });
         if (response.ok) {
           const data = await response.json();
@@ -401,7 +491,7 @@ export function Jobs() {
         }
       }
     }
-  }, [activeTab, activeResumeId, searchKeyword, fetchRefreshQuota]);
+  }, [activeTab, activeResumeId, searchKeyword, fetchRefreshQuota, resolvedCityState, useProfileLocation, activeResume]);
 
   useEffect(() => {
     if (!isResumesLoading) {
@@ -433,9 +523,19 @@ export function Jobs() {
 
   // Record a job visit when details are viewed and retrieve structured description
   const handleOpenJob = async (job: Job, matchInfo: typeof selectedMatchInfo) => {
+    const jobId = job.jobId || job._id;
+    activeJobIdRef.current = jobId;
+    
     // Open modal immediately with the current raw job details to keep the interface instant
     setSelectedJob(job);
     setSelectedMatchInfo(matchInfo);
+    
+    const looksRaw = !job.description.includes("##") && job.description.length >= 200;
+    if (looksRaw) {
+      setIsStructuring(true);
+    } else {
+      setIsStructuring(false);
+    }
     
     try {
       const token = localStorage.getItem("jobplotter_token");
@@ -469,20 +569,23 @@ export function Jobs() {
         const resData = await response.json();
         if (resData && resData.job) {
           const structuredJob = resData.job;
-          // Update selected job state with structured description & Convex database _id
-          setSelectedJob(structuredJob);
+          
+          // Only update selectedJob if this fetch is still for the currently active job
+          if (activeJobIdRef.current === jobId) {
+            setSelectedJob(structuredJob);
+          }
           
           // Propagate structured details back to list to cache in memory
           if (activeTab === "for-you") {
             setMatches(prev => prev.map(m => {
-              if (m.job.jobId === job.jobId || m.job._id === job._id) {
+              if (m.job.jobId === jobId || m.job._id === job._id) {
                 return { ...m, job: structuredJob };
               }
               return m;
             }));
           } else {
             setAllJobs(prev => prev.map(j => {
-              if (j.jobId === job.jobId || j._id === job._id) {
+              if (j.jobId === jobId || j._id === job._id) {
                 return structuredJob;
               }
               return j;
@@ -492,6 +595,10 @@ export function Jobs() {
       }
     } catch (err) {
       console.error("Failed to record job visit and retrieve structured description:", err);
+    } finally {
+      if (activeJobIdRef.current === jobId) {
+        setIsStructuring(false);
+      }
     }
   };
 
@@ -503,11 +610,45 @@ export function Jobs() {
 
     const passesAll = (j: Job): boolean => {
       if (!employmentMatches(j.employment_type, employmentTypes)) return false;
-      if (remoteFilter === "remote" && !j.remote) return false;
-      if (remoteFilter === "onsite" && j.remote) return false;
+      
+      const isHybrid = !!(j.remote_type?.toLowerCase().includes("hybrid") || j.location?.toLowerCase().includes("hybrid"));
+      
+      let jobWorkplaceType: "remote" | "hybrid" | "onsite" = "onsite";
+      if (isHybrid) {
+        jobWorkplaceType = "hybrid";
+      } else if (j.remote) {
+        jobWorkplaceType = "remote";
+      }
+
+      if (remoteFilters.size > 0 && !remoteFilters.has(jobWorkplaceType)) {
+        return false;
+      }
+
       if (minSalary !== null) {
         if (typeof j.salary_min !== "number" || j.salary_min < minSalary) return false;
       }
+
+      // Location matching (profile location or resolved zip code)
+      let filterLoc = "";
+      if (resolvedCityState) {
+        filterLoc = `${resolvedCityState.city}, ${resolvedCityState.state}`;
+      } else if (useProfileLocation && profileLocation) {
+        filterLoc = profileLocation;
+      }
+
+      if (filterLoc) {
+        const jobLoc = (j.location || "").toLowerCase();
+        if (resolvedCityState) {
+          const targetCity = resolvedCityState.city.toLowerCase();
+          if (!jobLoc.includes(targetCity)) return false;
+        } else {
+          const filterLocLower = filterLoc.toLowerCase();
+          const filterParts = filterLocLower.split(",").map(s => s.trim()).filter(Boolean);
+          const match = filterParts.some(part => jobLoc.includes(part));
+          if (!match) return false;
+        }
+      }
+
       return true;
     };
 
@@ -515,12 +656,12 @@ export function Jobs() {
       return matches.filter((m) => m.job && passesAll(m.job));
     }
     return allJobs.filter(passesAll);
-  }, [activeTab, matches, allJobs, employmentTypes, remoteFilter, minSalaryK]);
+  }, [activeTab, matches, allJobs, employmentTypes, remoteFilters, minSalaryK, resolvedCityState, useProfileLocation, activeResume]);
 
   // Reset pagination when search/filters/tab change
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchKeyword, employmentTypes, remoteFilter, minSalaryK]);
+  }, [activeTab, searchKeyword, employmentTypes, remoteFilters, minSalaryK, zipCode, useProfileLocation]);
 
   // Paginate list
   const paginatedJobsList = useMemo(() => {
@@ -545,24 +686,28 @@ export function Jobs() {
         {/* Active Profile Card. Only relevant on the For You tab — Search
             isn't keyed on the resume so showing the profile would imply
             it affects results when it doesn't. */}
+        {/* Active Profile Banner - subtle layout */}
         {activeResume && activeTab === "for-you" && (
-          <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden mb-8">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl" />
-            <div className="relative z-10">
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="text-[10px] font-extrabold tracking-wider uppercase text-indigo-300">
-                  Active Search Profile
-                </span>
+          <section className="bg-indigo-50/30 border border-indigo-100/50 rounded-2xl p-4.5 relative overflow-hidden mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100/40 mt-0.5">
+                <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse" />
               </div>
-
               <div>
-                <h3 className="text-lg font-bold text-white">{activeResume.title || "Untitled Resume"}</h3>
-                <p className="text-xs text-indigo-200 mt-1 max-w-xl">
-                  We're matching roles based on this profile's skills and target title. To change the active resume, open Settings.
+                <h3 className="text-[13px] font-extrabold text-slate-800 flex items-center gap-1.5 leading-snug">
+                  Active Matching Profile: <span className="text-indigo-600 font-extrabold">{activeResume.title || "Untitled Resume"}</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5 max-w-xl font-medium leading-normal">
+                  Matching jobs based on this profile's extracted skills and target title.
                 </p>
               </div>
             </div>
+            <button
+              onClick={() => navigate("/dashboard/settings")}
+              className="text-[11px] font-extrabold text-indigo-600 hover:text-indigo-800 transition-colors whitespace-nowrap px-3 py-1.5 bg-white border border-indigo-100/80 rounded-lg shadow-2xs hover:shadow-xs cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              Change Active Profile
+            </button>
           </section>
         )}
 
@@ -573,39 +718,39 @@ export function Jobs() {
             Always visible regardless of resume count: a user without a
             resume can still try Search; clicking For You shows a "Upload
             a resume" empty state. */}
-        <div className="flex items-center justify-between gap-4 mb-6 border-b border-slate-200/60 pb-3 overflow-x-auto scrollbar-none flex-nowrap">
-          {/* Primary: mode tabs */}
-          <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8 border-b border-slate-200/60 pb-5">
+          {/* Primary: mode tabs - segmented control for maximum visibility */}
+          <div className="bg-slate-100 p-1 rounded-2xl flex items-center gap-1 w-full sm:w-fit border border-slate-200/50 shadow-xs">
             <button
               onClick={() => setActiveTab("for-you")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-6 py-3 rounded-xl text-[13px] font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === "for-you"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                  ? "bg-white text-indigo-600 shadow-sm shadow-indigo-100/50"
+                  : "text-slate-500 hover:text-slate-900 hover:bg-white/40"
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className={`w-4 h-4 ${activeTab === 'for-you' ? 'text-indigo-600 animate-pulse' : 'text-slate-400'}`} />
               For You
             </button>
             <button
               onClick={() => setActiveTab("search")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-6 py-3 rounded-xl text-[13px] font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === "search"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                  ? "bg-white text-indigo-600 shadow-sm shadow-indigo-100/50"
+                  : "text-slate-500 hover:text-slate-900 hover:bg-white/40"
               }`}
             >
-              <Compass className="w-3.5 h-3.5" />
-              Search
+              <Compass className={`w-4 h-4 ${activeTab === 'search' ? 'text-indigo-600' : 'text-slate-400'}`} />
+              Search Roles
             </button>
           </div>
 
           {/* Secondary: actions */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center justify-end gap-2 shrink-0">
             <button
               onClick={() => fetchJobsData(true)}
               disabled={isDataLoading || (refreshQuota !== null && refreshQuota.remaining === 0)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 bg-white border border-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap shadow-xs"
               title={
                 refreshQuota === null
                   ? "Force refresh (bypass cache)"
@@ -638,10 +783,10 @@ export function Jobs() {
               onClick={() => setFiltersOpen((v) => !v)}
               aria-expanded={filtersOpen}
               aria-controls="jobs-filter-panel"
-              className={`lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              className={`lg:hidden flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer border whitespace-nowrap shadow-xs ${
                 filtersOpen
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                  ? "bg-slate-900 text-white border-slate-900"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 bg-white border-slate-200"
               }`}
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -1007,36 +1152,125 @@ export function Jobs() {
                 )}
               </div>
 
-              {/* Remote */}
+              {/* Workplace Type */}
               <div className="border-b border-slate-100 pb-3 mb-3">
                 <button
                   onClick={() => setLocationOpen(!locationOpen)}
                   className="flex items-center justify-between w-full py-1 font-semibold text-sm text-slate-800 text-left cursor-pointer"
                 >
-                  <span>Location</span>
+                  <span>Workplace Type</span>
                   <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${locationOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {locationOpen && (
                   <div className="pt-1.5 pb-1 space-y-2.5 animate-in fade-in duration-200">
                     {([
-                      { value: "all", label: "Any" },
-                      { value: "remote", label: "Remote only" },
-                      { value: "onsite", label: "On-site only" },
-                    ] as const).map((opt) => (
-                      <label
-                        key={opt.value}
-                        className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900"
-                      >
+                      { value: "remote", label: "Remote" },
+                      { value: "hybrid", label: "Hybrid" },
+                      { value: "onsite", label: "On-site" },
+                    ] as const).map((opt) => {
+                      const checked = remoteFilters.has(opt.value);
+                      return (
+                        <label
+                          key={opt.value}
+                          className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setRemoteFilters((prev) => {
+                                const next = new Set(prev);
+                                if (checked) next.delete(opt.value);
+                                else next.add(opt.value);
+                                return next;
+                              });
+                            }}
+                            className="rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          {opt.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Geographic Location */}
+              <div className="border-b border-slate-100 pb-3 mb-3">
+                <button
+                  onClick={() => setGeoOpen(!geoOpen)}
+                  className="flex items-center justify-between w-full py-1 font-semibold text-sm text-slate-800 text-left cursor-pointer"
+                >
+                  <span>Geographic Location</span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${geoOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {geoOpen && (
+                  <div className="pt-2 pb-1 space-y-3.5 animate-in fade-in duration-200">
+                    {/* Profile Location Checkbox */}
+                    {profileLocation && (
+                      <label className="flex items-start gap-2 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900">
                         <input
-                          type="radio"
-                          name="remote-filter"
-                          checked={remoteFilter === opt.value}
-                          onChange={() => setRemoteFilter(opt.value)}
-                          className="text-indigo-600 focus:ring-indigo-500"
+                          type="checkbox"
+                          checked={useProfileLocation}
+                          onChange={(e) => {
+                            setUseProfileLocation(e.target.checked);
+                            if (e.target.checked) {
+                              setZipCode("");
+                              setResolvedCityState(null);
+                            }
+                          }}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 mt-0.5"
                         />
-                        {opt.label}
+                        <div className="leading-snug">
+                          <span>Match profile location</span>
+                          <p className="text-[10px] text-indigo-600 mt-0.5">{profileLocation}</p>
+                        </div>
                       </label>
-                    ))}
+                    )}
+
+                    {/* ZIP Code Input */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Filter by ZIP Code
+                      </label>
+                      <div className="relative flex items-center">
+                        <input
+                          type="text"
+                          maxLength={5}
+                          placeholder="e.g. 90210"
+                          value={zipCode}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, "");
+                            setZipCode(val);
+                          }}
+                          className="w-full pl-2.5 pr-8 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300"
+                        />
+                        {isResolvingZip && (
+                          <div className="absolute right-2.5 animate-spin h-3.5 w-3.5 border-2 border-indigo-600 border-t-transparent rounded-full" />
+                        )}
+                        {!isResolvingZip && zipCode && (
+                          <button
+                            onClick={() => {
+                              setZipCode("");
+                              setResolvedCityState(null);
+                            }}
+                            className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      {resolvedCityState && (
+                        <p className="text-[10px] font-bold text-emerald-600 leading-tight">
+                          Resolved: {resolvedCityState.city}, {resolvedCityState.state}
+                        </p>
+                      )}
+                      {zipError && (
+                        <p className="text-[10px] font-semibold text-rose-500 leading-tight">
+                          {zipError}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1093,7 +1327,11 @@ export function Jobs() {
       {selectedJob && (
         <div 
           className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6"
-          onClick={() => setSelectedJob(null)}
+          onClick={() => {
+            setSelectedJob(null);
+            activeJobIdRef.current = null;
+            setIsStructuring(false);
+          }}
         >
           <div 
             className="bg-white w-full max-w-3xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col relative"
@@ -1115,7 +1353,11 @@ export function Jobs() {
                 </div>
               </div>
               <button 
-                onClick={() => setSelectedJob(null)}
+                onClick={() => {
+                  setSelectedJob(null);
+                  activeJobIdRef.current = null;
+                  setIsStructuring(false);
+                }}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 cursor-pointer"
                 aria-label="Close details"
               >
@@ -1201,23 +1443,57 @@ export function Jobs() {
               </div>
 
               {/* Job Description (Markdown) */}
-              <div className="prose prose-slate max-w-none text-slate-800 text-sm whitespace-pre-line">
-                <ReactMarkdown 
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    h1: ({node, ...props}) => <h1 className="text-base font-extrabold text-slate-900 mt-6 mb-2.5 border-b pb-1 border-slate-100" {...props} />,
-                    h2: ({node, ...props}) => <h2 className="text-[15px] font-bold text-slate-900 mt-5 mb-2 border-b pb-0.5 border-slate-100" {...props} />,
-                    h3: ({node, ...props}) => <h3 className="text-sm font-bold text-slate-850 mt-4 mb-1.5" {...props} />,
-                    p: ({node, ...props}) => <p className="text-[12.5px] text-slate-600 leading-relaxed mb-3.5 whitespace-pre-line" {...props} />,
-                    ul: ({node, ...props}) => <ul className="list-disc pl-5 space-y-1 mb-4 text-[12.5px] text-slate-600" {...props} />,
-                    ol: ({node, ...props}) => <ol className="list-decimal pl-5 space-y-1 mb-4 text-[12.5px] text-slate-600" {...props} />,
-                    li: ({node, ...props}) => <li className="leading-relaxed" {...props} />,
-                    strong: ({node, ...props}) => <strong className="font-semibold text-slate-950" {...props} />,
-                  }}
-                >
-                  {selectedJob.description}
-                </ReactMarkdown>
-              </div>
+              {isStructuring ? (
+                <div className="space-y-6 animate-pulse">
+                  {/* Skeleton lines */}
+                  <div className="space-y-4">
+                    {/* Header 1 placeholder */}
+                    <div className="h-4 bg-slate-200/80 rounded-md w-1/3" />
+                    {/* Paragraph placeholders */}
+                    <div className="space-y-2">
+                      <div className="h-3 bg-slate-100 rounded-md w-full" />
+                      <div className="h-3 bg-slate-100 rounded-md w-5/6" />
+                      <div className="h-3 bg-slate-100 rounded-md w-4/5" />
+                    </div>
+                    
+                    {/* Header 2 placeholder */}
+                    <div className="h-4 bg-slate-200/80 rounded-md w-1/4 pt-2" />
+                    {/* List item placeholders */}
+                    <div className="space-y-2.5 pl-4">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                        <div className="h-3 bg-slate-100 rounded-md w-11/12" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                        <div className="h-3 bg-slate-100 rounded-md w-5/6" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                        <div className="h-3 bg-slate-100 rounded-md w-10/12" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="prose prose-slate max-w-none text-slate-800 text-sm whitespace-pre-line">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({node, ...props}) => <h1 className="text-base font-extrabold text-slate-900 mt-6 mb-2.5 border-b pb-1 border-slate-100" {...props} />,
+                      h2: ({node, ...props}) => <h2 className="text-[15px] font-bold text-slate-900 mt-5 mb-2 border-b pb-0.5 border-slate-100" {...props} />,
+                      h3: ({node, ...props}) => <h3 className="text-sm font-bold text-slate-850 mt-4 mb-1.5" {...props} />,
+                      p: ({node, ...props}) => <p className="text-[12.5px] text-slate-600 leading-relaxed mb-3.5 whitespace-pre-line" {...props} />,
+                      ul: ({node, ...props}) => <ul className="list-disc pl-5 space-y-1 mb-4 text-[12.5px] text-slate-600" {...props} />,
+                      ol: ({node, ...props}) => <ol className="list-decimal pl-5 space-y-1 mb-4 text-[12.5px] text-slate-600" {...props} />,
+                      li: ({node, ...props}) => <li className="leading-relaxed" {...props} />,
+                      strong: ({node, ...props}) => <strong className="font-semibold text-slate-950" {...props} />,
+                    }}
+                  >
+                    {selectedJob.description}
+                  </ReactMarkdown>
+                </div>
+              )}
 
             </div>
 

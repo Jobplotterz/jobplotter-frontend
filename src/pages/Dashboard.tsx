@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import { ResumePreview } from "@/components/ResumePreview";
+import { CompanyLogo } from "@/components/CompanyLogo";
 import { initialResumeData, ResumeData } from "@/types";
 
 type ActiveTab = "overview" | "resumes";
@@ -240,26 +241,11 @@ export function Dashboard() {
                           className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm"
                         >
                           <div className="flex items-center gap-4 min-w-0">
-                            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center shrink-0 border border-slate-100 overflow-hidden">
-                              {job.logo ? (
-                                <img src={job.logo} alt={job.company} className="w-full h-full object-contain" />
-                              ) : job.company ? (
-                                <img 
-                                  src={`https://logo.clearbit.com/${job.company.toLowerCase().replace(/[^a-z0-9]/g, "")}.com`} 
-                                  alt={job.company} 
-                                  className="w-full h-full object-contain"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                    const parent = e.currentTarget.parentElement;
-                                    if (parent) {
-                                      parent.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-indigo-50 text-indigo-600 font-bold text-xs">${job.company?.charAt(0) || ''}</div>`;
-                                    }
-                                  }}
-                                />
-                              ) : (
-                                <Building2 className="w-5 h-5 text-slate-400" />
-                              )}
-                            </div>
+                            <CompanyLogo
+                              company={job.company}
+                              logo={job.logo}
+                              className="w-10 h-10"
+                            />
                             <div className="min-w-0">
                               <h3 className="text-sm font-bold text-slate-900 truncate">
                                 {job.title}
