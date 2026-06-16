@@ -168,7 +168,17 @@ export function Jobs() {
     gaps?: string[];
   } | null>(null);
   const [isStructuring, setIsStructuring] = useState(false);
-  
+  // Search-tab jobs aren't pre-scored. We score the opened job on demand and
+  // cache the result per jobId so reopening (or paging back) is instant and
+  // doesn't re-spend an LLM call.
+  const [isScoringMatch, setIsScoringMatch] = useState(false);
+  const scoreCacheRef = useRef<Record<string, {
+    score: number;
+    reasoning?: string;
+    strengths?: string[];
+    gaps?: string[];
+  }>>({});
+
   const [zipCode, setZipCode] = useState<string>("");
   const [resolvedCityState, setResolvedCityState] = useState<{ city: string; state: string } | null>(null);
   const [isResolvingZip, setIsResolvingZip] = useState(false);
@@ -605,7 +615,58 @@ export function Jobs() {
     } else {
       setIsStructuring(false);
     }
-    
+
+    // For You jobs arrive pre-scored (matchInfo). Search-tab jobs don't, so
+    // score the opened job against the active resume on demand. Skipped when
+    // the user has no resume — there's nothing to match against.
+    if (!matchInfo && activeTab === "search" && resumes.length > 0) {
+      const cached = scoreCacheRef.current[jobId];
+      if (cached) {
+        setSelectedMatchInfo(cached);
+        setIsScoringMatch(false);
+      } else {
+        setIsScoringMatch(true);
+        (async () => {
+          try {
+            const token = localStorage.getItem("jobplotter_token");
+            const res = await fetch(
+              `${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/jobs/score-match`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                  jobId,
+                  title: job.title,
+                  company: job.company || "Unknown Company",
+                  description: job.description || "",
+                }),
+              }
+            );
+            if (res.ok) {
+              const data = await res.json();
+              if (data && typeof data.score === "number") {
+                const info = {
+                  score: data.score,
+                  reasoning: data.reasoning,
+                  strengths: data.strengths,
+                  gaps: data.gaps,
+                };
+                scoreCacheRef.current[jobId] = info;
+                // Only apply if the user hasn't since opened a different job.
+                if (activeJobIdRef.current === jobId) setSelectedMatchInfo(info);
+              }
+            }
+          } catch (e) {
+            console.error("Failed to score job match:", e);
+          } finally {
+            if (activeJobIdRef.current === jobId) setIsScoringMatch(false);
+          }
+        })();
+      }
+    } else {
+      setIsScoringMatch(false);
+    }
+
     try {
       const token = localStorage.getItem("jobplotter_token");
       const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/jobs/visited`, {
@@ -1421,9 +1482,10 @@ export function Jobs() {
             setSelectedJob(null);
             activeJobIdRef.current = null;
             setIsStructuring(false);
+            setIsScoringMatch(false);
           }}
         >
-          <div 
+          <div
             className="bg-white w-full max-w-3xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col relative"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1442,11 +1504,12 @@ export function Jobs() {
                   </p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   setSelectedJob(null);
                   activeJobIdRef.current = null;
                   setIsStructuring(false);
+                  setIsScoringMatch(false);
                 }}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 cursor-pointer"
                 aria-label="Close details"
@@ -1458,6 +1521,17 @@ export function Jobs() {
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
               
+              {/* Match scoring in progress (Search tab, on-demand). Shown only
+                  while we wait for the score and before any result lands. */}
+              {!selectedMatchInfo && isScoringMatch && (
+                <div className="bg-indigo-50/50 rounded-2xl p-5 border border-indigo-100/50 flex items-center gap-3">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600 shrink-0" />
+                  <span className="text-xs font-semibold text-indigo-900">
+                    Analyzing how well this job matches your resume…
+                  </span>
+                </div>
+              )}
+
               {/* AI Match Details Section */}
               {selectedMatchInfo && (
                 <div className="bg-indigo-50/50 rounded-2xl p-5 border border-indigo-100/50">
