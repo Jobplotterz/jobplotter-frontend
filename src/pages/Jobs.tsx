@@ -65,6 +65,83 @@ function JobsLoadingState({
   );
 }
 
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// US states for the State sub-filter. We keep both the full name and the
+// abbreviation so we can match a job's free-text location whether it spells
+// the state out ("California") or abbreviates it (", CA").
+const US_STATES: { name: string; abbr: string }[] = [
+  { name: "Alabama", abbr: "AL" }, { name: "Alaska", abbr: "AK" },
+  { name: "Arizona", abbr: "AZ" }, { name: "Arkansas", abbr: "AR" },
+  { name: "California", abbr: "CA" }, { name: "Colorado", abbr: "CO" },
+  { name: "Connecticut", abbr: "CT" }, { name: "Delaware", abbr: "DE" },
+  { name: "District of Columbia", abbr: "DC" }, { name: "Florida", abbr: "FL" },
+  { name: "Georgia", abbr: "GA" }, { name: "Hawaii", abbr: "HI" },
+  { name: "Idaho", abbr: "ID" }, { name: "Illinois", abbr: "IL" },
+  { name: "Indiana", abbr: "IN" }, { name: "Iowa", abbr: "IA" },
+  { name: "Kansas", abbr: "KS" }, { name: "Kentucky", abbr: "KY" },
+  { name: "Louisiana", abbr: "LA" }, { name: "Maine", abbr: "ME" },
+  { name: "Maryland", abbr: "MD" }, { name: "Massachusetts", abbr: "MA" },
+  { name: "Michigan", abbr: "MI" }, { name: "Minnesota", abbr: "MN" },
+  { name: "Mississippi", abbr: "MS" }, { name: "Missouri", abbr: "MO" },
+  { name: "Montana", abbr: "MT" }, { name: "Nebraska", abbr: "NE" },
+  { name: "Nevada", abbr: "NV" }, { name: "New Hampshire", abbr: "NH" },
+  { name: "New Jersey", abbr: "NJ" }, { name: "New Mexico", abbr: "NM" },
+  { name: "New York", abbr: "NY" }, { name: "North Carolina", abbr: "NC" },
+  { name: "North Dakota", abbr: "ND" }, { name: "Ohio", abbr: "OH" },
+  { name: "Oklahoma", abbr: "OK" }, { name: "Oregon", abbr: "OR" },
+  { name: "Pennsylvania", abbr: "PA" }, { name: "Rhode Island", abbr: "RI" },
+  { name: "South Carolina", abbr: "SC" }, { name: "South Dakota", abbr: "SD" },
+  { name: "Tennessee", abbr: "TN" }, { name: "Texas", abbr: "TX" },
+  { name: "Utah", abbr: "UT" }, { name: "Vermont", abbr: "VT" },
+  { name: "Virginia", abbr: "VA" }, { name: "Washington", abbr: "WA" },
+  { name: "West Virginia", abbr: "WV" }, { name: "Wisconsin", abbr: "WI" },
+  { name: "Wyoming", abbr: "WY" },
+];
+
+// Countries offered in the filter. `aliases` are lowercased forms we accept
+// inside a job's free-text location. Only United States exposes the State
+// sub-filter (US_STATES above).
+const COUNTRIES: { name: string; aliases: string[] }[] = [
+  { name: "United States", aliases: ["united states", "usa", "us", "u.s.a"] },
+  { name: "Canada", aliases: ["canada"] },
+  { name: "United Kingdom", aliases: ["united kingdom", "uk", "england", "scotland", "wales", "britain"] },
+  { name: "Australia", aliases: ["australia"] },
+  { name: "Germany", aliases: ["germany", "deutschland"] },
+  { name: "France", aliases: ["france"] },
+  { name: "Netherlands", aliases: ["netherlands", "holland"] },
+  { name: "Ireland", aliases: ["ireland"] },
+  { name: "Spain", aliases: ["spain"] },
+  { name: "India", aliases: ["india"] },
+  { name: "Singapore", aliases: ["singapore"] },
+  { name: "Brazil", aliases: ["brazil", "brasil"] },
+  { name: "Mexico", aliases: ["mexico", "méxico"] },
+  { name: "Japan", aliases: ["japan"] },
+];
+
+// Match a job's location string against a US state, accepting either the full
+// name (case-insensitive) or the abbreviation as a standalone token (", CA" /
+// "CA," / " CA ") so we never match the letters inside another word.
+const matchesState = (jobLoc: string, state: { name: string; abbr: string }): boolean => {
+  if (jobLoc.toLowerCase().includes(state.name.toLowerCase())) return true;
+  return new RegExp(`(^|[,\\s])${state.abbr}([,\\s]|$)`).test(jobLoc);
+};
+
+const matchesCountry = (jobLoc: string, countryName: string): boolean => {
+  const country = COUNTRIES.find((c) => c.name === countryName);
+  if (!country) return true;
+  const loc = jobLoc.toLowerCase();
+  if (country.aliases.some((a) => new RegExp(`\\b${escapeRegExp(a)}\\b`).test(loc))) {
+    return true;
+  }
+  // US listings frequently drop the country and show only "City, ST" — treat
+  // any recognized US state token as United States.
+  if (countryName === "United States") {
+    return US_STATES.some((s) => matchesState(jobLoc, s));
+  }
+  return false;
+};
+
 export function Jobs() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -74,7 +151,6 @@ export function Jobs() {
   const [resumes, setResumes] = useState<any[]>([]);
   const activeResume = resumes.find(r => r.isDefault) || resumes[0];
   const activeResumeId = activeResume?._id || "none";
-  const profileLocation = activeResume?.extractedData?.personalInfo?.location;
   const [matches, setMatches] = useState<Match[]>([]);
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   
@@ -96,8 +172,9 @@ export function Jobs() {
   const [zipCode, setZipCode] = useState<string>("");
   const [resolvedCityState, setResolvedCityState] = useState<{ city: string; state: string } | null>(null);
   const [isResolvingZip, setIsResolvingZip] = useState(false);
-  const [useProfileLocation, setUseProfileLocation] = useState(false);
   const [zipError, setZipError] = useState<string | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<string>("");
+  const [selectedState, setSelectedState] = useState<string>("");
   const [geoOpen, setGeoOpen] = useState(true);
   
   const [jobTypeOpen, setJobTypeOpen] = useState(true);
@@ -166,15 +243,17 @@ export function Jobs() {
     remoteFilters.size +
     (minSalaryK !== null ? 1 : 0) +
     (zipCode.trim().length === 5 && resolvedCityState ? 1 : 0) +
-    (useProfileLocation && activeResume?.extractedData?.personalInfo?.location ? 1 : 0);
+    (selectedCountry ? 1 : 0) +
+    (selectedCountry === "United States" && selectedState ? 1 : 0);
 
   const clearFilters = () => {
     setEmploymentTypes(new Set());
     setRemoteFilters(new Set());
     setMinSalaryK(null);
     setZipCode("");
-    setUseProfileLocation(false);
     setResolvedCityState(null);
+    setSelectedCountry("");
+    setSelectedState("");
   };
 
   // Map RapidAPI's noisy raw employment_type values (FULL_TIME, Full Time,
@@ -218,11 +297,6 @@ export function Jobs() {
         setResumes(data);
         if (data.length === 0) {
           setActiveTab("search");
-        } else {
-          const activeRes = data.find((r: any) => r.isDefault) || data[0];
-          if (activeRes?.extractedData?.personalInfo?.location) {
-            setUseProfileLocation(true);
-          }
         }
       }
     } catch (error) {
@@ -254,7 +328,6 @@ export function Jobs() {
                 city: place["place name"],
                 state: place["state abbreviation"]
               });
-              setUseProfileLocation(false);
             } else {
               setResolvedCityState(null);
               setZipError("ZIP code not found");
@@ -393,8 +466,6 @@ export function Jobs() {
         let locationParam = "";
         if (resolvedCityState) {
           locationParam = `${resolvedCityState.city}, ${resolvedCityState.state}`;
-        } else if (useProfileLocation && profileLocation) {
-          locationParam = profileLocation;
         }
         if (locationParam) {
           params.set("location", locationParam);
@@ -429,8 +500,6 @@ export function Jobs() {
         let locationParam = "";
         if (resolvedCityState) {
           locationParam = `${resolvedCityState.city}, ${resolvedCityState.state}`;
-        } else if (useProfileLocation && activeResume?.extractedData?.personalInfo?.location) {
-          locationParam = activeResume.extractedData.personalInfo.location;
         }
         if (locationParam) {
           params.set("location", locationParam);
@@ -491,7 +560,7 @@ export function Jobs() {
         }
       }
     }
-  }, [activeTab, activeResumeId, searchKeyword, fetchRefreshQuota, resolvedCityState, useProfileLocation, activeResume]);
+  }, [activeTab, activeResumeId, searchKeyword, fetchRefreshQuota, resolvedCityState]);
 
   useEffect(() => {
     if (!isResumesLoading) {
@@ -628,25 +697,20 @@ export function Jobs() {
         if (typeof j.salary_min !== "number" || j.salary_min < minSalary) return false;
       }
 
-      // Location matching (profile location or resolved zip code)
-      let filterLoc = "";
+      // Location matching from a resolved ZIP code (matched on city name).
       if (resolvedCityState) {
-        filterLoc = `${resolvedCityState.city}, ${resolvedCityState.state}`;
-      } else if (useProfileLocation && profileLocation) {
-        filterLoc = profileLocation;
+        const jobLoc = (j.location || "").toLowerCase();
+        if (!jobLoc.includes(resolvedCityState.city.toLowerCase())) return false;
       }
 
-      if (filterLoc) {
-        const jobLoc = (j.location || "").toLowerCase();
-        if (resolvedCityState) {
-          const targetCity = resolvedCityState.city.toLowerCase();
-          if (!jobLoc.includes(targetCity)) return false;
-        } else {
-          const filterLocLower = filterLoc.toLowerCase();
-          const filterParts = filterLocLower.split(",").map(s => s.trim()).filter(Boolean);
-          const match = filterParts.some(part => jobLoc.includes(part));
-          if (!match) return false;
-        }
+      // Country / state gates. Applied independently of the ZIP/profile block
+      // above, so they compose as an AND with whatever else is selected.
+      if (selectedCountry && !matchesCountry(j.location || "", selectedCountry)) {
+        return false;
+      }
+      if (selectedCountry === "United States" && selectedState) {
+        const st = US_STATES.find((s) => s.name === selectedState);
+        if (st && !matchesState(j.location || "", st)) return false;
       }
 
       return true;
@@ -656,12 +720,12 @@ export function Jobs() {
       return matches.filter((m) => m.job && passesAll(m.job));
     }
     return allJobs.filter(passesAll);
-  }, [activeTab, matches, allJobs, employmentTypes, remoteFilters, minSalaryK, resolvedCityState, useProfileLocation, activeResume]);
+  }, [activeTab, matches, allJobs, employmentTypes, remoteFilters, minSalaryK, resolvedCityState, selectedCountry, selectedState]);
 
   // Reset pagination when search/filters/tab change
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchKeyword, employmentTypes, remoteFilters, minSalaryK, zipCode, useProfileLocation]);
+  }, [activeTab, searchKeyword, employmentTypes, remoteFilters, minSalaryK, zipCode, selectedCountry, selectedState]);
 
   // Paginate list
   const paginatedJobsList = useMemo(() => {
@@ -1206,26 +1270,52 @@ export function Jobs() {
                 </button>
                 {geoOpen && (
                   <div className="pt-2 pb-1 space-y-3.5 animate-in fade-in duration-200">
-                    {/* Profile Location Checkbox */}
-                    {profileLocation && (
-                      <label className="flex items-start gap-2 cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900">
-                        <input
-                          type="checkbox"
-                          checked={useProfileLocation}
-                          onChange={(e) => {
-                            setUseProfileLocation(e.target.checked);
-                            if (e.target.checked) {
-                              setZipCode("");
-                              setResolvedCityState(null);
-                            }
-                          }}
-                          className="rounded text-indigo-600 focus:ring-indigo-500 mt-0.5"
-                        />
-                        <div className="leading-snug">
-                          <span>Match profile location</span>
-                          <p className="text-[10px] text-indigo-600 mt-0.5">{profileLocation}</p>
-                        </div>
+                    {/* Country select. Drives international filtering; when
+                        United States is chosen, the State select appears. */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Country
                       </label>
+                      <div className="relative">
+                        <select
+                          value={selectedCountry}
+                          onChange={(e) => {
+                            setSelectedCountry(e.target.value);
+                            // Drop any chosen state when leaving the US so a
+                            // stale state filter can't silently exclude jobs.
+                            if (e.target.value !== "United States") setSelectedState("");
+                          }}
+                          className="w-full appearance-none pl-2.5 pr-8 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 bg-white outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 cursor-pointer"
+                        >
+                          <option value="">Any country</option>
+                          {COUNTRIES.map((c) => (
+                            <option key={c.name} value={c.name}>{c.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* State select — only meaningful for US listings. */}
+                    {selectedCountry === "United States" && (
+                      <div className="space-y-1.5 animate-in fade-in duration-200">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          State
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={selectedState}
+                            onChange={(e) => setSelectedState(e.target.value)}
+                            className="w-full appearance-none pl-2.5 pr-8 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 bg-white outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 cursor-pointer"
+                          >
+                            <option value="">Any state</option>
+                            {US_STATES.map((s) => (
+                              <option key={s.abbr} value={s.name}>{s.name}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        </div>
+                      </div>
                     )}
 
                     {/* ZIP Code Input */}
