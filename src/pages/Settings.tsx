@@ -187,8 +187,9 @@ export function Settings() {
               const rid = resume._id || resume.id;
               const isDefault = !!resume.isDefault;
               const isSaving = savingId === rid;
-              const updated = resume._creationTime
-                ? new Date(resume._creationTime).toLocaleDateString()
+              const updatedTime = resume.updatedAt || resume._creationTime;
+              const updated = updatedTime
+                ? new Date(updatedTime).toLocaleDateString()
                 : null;
 
               return (

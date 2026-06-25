@@ -279,8 +279,9 @@ export function Dashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {resumes.map((resume) => {
                   const rid = resume._id || resume.id;
-                  const updated = resume._creationTime
-                    ? new Date(resume._creationTime).toLocaleDateString()
+                  const updatedTime = resume.updatedAt || resume._creationTime;
+                  const updated = updatedTime
+                    ? new Date(updatedTime).toLocaleDateString()
                     : "Unknown";
                   return (
                     <button

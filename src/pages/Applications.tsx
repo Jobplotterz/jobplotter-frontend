@@ -39,6 +39,37 @@ interface Application {
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
+export const getCurrencySymbol = (currencyCode?: string, location?: string): string => {
+  if (currencyCode) {
+    const code = currencyCode.toUpperCase();
+    if (code === 'USD' || code === 'CAD' || code === 'AUD' || code === 'NZD' || code === 'SGD' || code === '$') return '$';
+    if (code === 'GBP' || code === '£') return '£';
+    if (code === 'EUR' || code === '€') return '€';
+    if (code === 'INR' || code === '₹') return '₹';
+    if (code === 'JPY' || code === '¥') return '¥';
+    if (['$', '£', '€', '₹', '¥'].includes(currencyCode)) return currencyCode;
+  }
+  
+  if (location) {
+    const loc = location.toLowerCase();
+    if (loc.includes('united kingdom') || loc.includes('uk') || loc.includes('london') || loc.includes('gbp')) return '£';
+    if (loc.includes('germany') || loc.includes('france') || loc.includes('europe') || loc.includes('spain') || loc.includes('italy') || loc.includes('netherlands') || loc.includes('eur')) return '€';
+    if (loc.includes('india') || loc.includes('inr')) return '₹';
+    if (loc.includes('japan') || loc.includes('jpy')) return '¥';
+    if (loc.includes('canada') || loc.includes('australia') || loc.includes('singapore')) return '$';
+  }
+
+  try {
+    const locale = navigator.language;
+    if (locale.includes('GB') || locale.includes('en-GB')) return '£';
+    if (locale.includes('FR') || locale.includes('DE') || locale.includes('IT') || locale.includes('NL') || locale.includes('ES')) return '€';
+    if (locale.includes('IN')) return '₹';
+    if (locale.includes('JP')) return '¥';
+  } catch (e) {}
+
+  return '$';
+};
+
 export function Applications() {
   const [apps, setApps] = useState<Application[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -298,7 +329,7 @@ export function Applications() {
                 )}
                 {selectedJob.salary_min && (
                   <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-100">
-                    Salary: {selectedJob.salary_currency || "$"}{Math.round(selectedJob.salary_min / 1000)}k - {selectedJob.salary_max ? `${Math.round(selectedJob.salary_max / 1000)}k` : "Open"}
+                    Salary: {getCurrencySymbol(selectedJob.salary_currency, selectedJob.location)}{Math.round(selectedJob.salary_min / 1000)}k - {selectedJob.salary_max ? `${Math.round(selectedJob.salary_max / 1000)}k` : "Open"}
                   </span>
                 )}
               </div>

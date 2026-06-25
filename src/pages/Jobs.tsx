@@ -42,6 +42,37 @@ interface Match {
   job: Job;
 }
 
+export const getCurrencySymbol = (currencyCode?: string, location?: string): string => {
+  if (currencyCode) {
+    const code = currencyCode.toUpperCase();
+    if (code === 'USD' || code === 'CAD' || code === 'AUD' || code === 'NZD' || code === 'SGD' || code === '$') return '$';
+    if (code === 'GBP' || code === '£') return '£';
+    if (code === 'EUR' || code === '€') return '€';
+    if (code === 'INR' || code === '₹') return '₹';
+    if (code === 'JPY' || code === '¥') return '¥';
+    if (['$', '£', '€', '₹', '¥'].includes(currencyCode)) return currencyCode;
+  }
+  
+  if (location) {
+    const loc = location.toLowerCase();
+    if (loc.includes('united kingdom') || loc.includes('uk') || loc.includes('london') || loc.includes('gbp')) return '£';
+    if (loc.includes('germany') || loc.includes('france') || loc.includes('europe') || loc.includes('spain') || loc.includes('italy') || loc.includes('netherlands') || loc.includes('eur')) return '€';
+    if (loc.includes('india') || loc.includes('inr')) return '₹';
+    if (loc.includes('japan') || loc.includes('jpy')) return '¥';
+    if (loc.includes('canada') || loc.includes('australia') || loc.includes('singapore')) return '$';
+  }
+
+  try {
+    const locale = navigator.language;
+    if (locale.includes('GB') || locale.includes('en-GB')) return '£';
+    if (locale.includes('FR') || locale.includes('DE') || locale.includes('IT') || locale.includes('NL') || locale.includes('ES')) return '€';
+    if (locale.includes('IN')) return '₹';
+    if (locale.includes('JP')) return '¥';
+  } catch (e) {}
+
+  return '$';
+};
+
 // Phase-aware loading card. Shows the keyword being searched up front so
 // users know what was extracted from their resume; after ~1.5s, swaps in
 // a second line acknowledging that this is likely a cold cache miss and
@@ -287,11 +318,15 @@ export function Jobs() {
   // every mount; matches are resume-keyed and don't churn that quickly.
   const CACHE_TTL_MS = 15 * 60 * 1000;
   const isCacheFresh = (key: string) => {
-    const tsRaw = localStorage.getItem(`${key}_ts`);
-    if (!tsRaw) return false;
-    const ts = parseInt(tsRaw, 10);
-    if (Number.isNaN(ts)) return false;
-    return Date.now() - ts < CACHE_TTL_MS;
+    try {
+      const tsRaw = localStorage.getItem(`${key}_ts`);
+      if (!tsRaw) return false;
+      const ts = parseInt(tsRaw, 10);
+      if (Number.isNaN(ts)) return false;
+      return Date.now() - ts < CACHE_TTL_MS;
+    } catch {
+      return false;
+    }
   };
 
   const fetchResumes = async () => {
@@ -426,6 +461,20 @@ export function Jobs() {
       return;
     }
 
+    // Skip automatic refetches if we already have jobs loaded in memory
+    if (!force) {
+      if (activeTab === "for-you" && matches.length > 0) {
+        setIsDataLoading(false);
+        inFlightRef.current = null;
+        return;
+      }
+      if (activeTab === "search" && allJobs.length > 0) {
+        setIsDataLoading(false);
+        inFlightRef.current = null;
+        return;
+      }
+    }
+
     // Cache keys differ by mode. For You is per-resume (matches don't change
     // with keystrokes); Search is per-keyword (every submitted query is its
     // own corpus slice).
@@ -442,17 +491,26 @@ export function Jobs() {
     inFlightRef.current = inFlightKey;
 
     if (!force) {
-      const cachedRaw = localStorage.getItem(cacheKey);
+      let cachedRaw = null;
       let cachedIsNonEmpty = false;
-      if (cachedRaw) {
-        try {
+      try {
+        cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
           const parsed = JSON.parse(cachedRaw);
           cachedIsNonEmpty = Array.isArray(parsed) && parsed.length > 0;
-        } catch {
-          cachedIsNonEmpty = false;
         }
+      } catch (e) {
+        console.warn("Failed to read from localStorage:", e);
       }
-      if (cachedIsNonEmpty && isCacheFresh(cacheKey)) {
+
+      let cacheFresh = false;
+      try {
+        cacheFresh = isCacheFresh(cacheKey);
+      } catch (e) {
+        console.warn("Failed to check cache freshness:", e);
+      }
+
+      if (cachedIsNonEmpty && cacheFresh) {
         setIsDataLoading(false);
         inFlightRef.current = null;
         return;
@@ -465,7 +523,12 @@ export function Jobs() {
     }
 
     try {
-      const token = localStorage.getItem("jobplotter_token");
+      let token = null;
+      try {
+        token = localStorage.getItem("jobplotter_token");
+      } catch (e) {
+        console.warn("Failed to get token from localStorage:", e);
+      }
       const headers = { "Authorization": `Bearer ${token}` };
       const base = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
@@ -489,12 +552,16 @@ export function Jobs() {
           if (latestActiveTabRef.current !== "for-you") return;
 
           setMatches(data);
-          if (Array.isArray(data) && data.length > 0) {
-            localStorage.setItem(cacheKey, JSON.stringify(data));
-            localStorage.setItem(`${cacheKey}_ts`, String(Date.now()));
-          } else {
-            localStorage.removeItem(cacheKey);
-            localStorage.removeItem(`${cacheKey}_ts`);
+          try {
+            if (Array.isArray(data) && data.length > 0) {
+              localStorage.setItem(cacheKey, JSON.stringify(data));
+              localStorage.setItem(`${cacheKey}_ts`, String(Date.now()));
+            } else {
+              localStorage.removeItem(cacheKey);
+              localStorage.removeItem(`${cacheKey}_ts`);
+            }
+          } catch (storageErr) {
+            console.warn("Failed to update cache in localStorage:", storageErr);
           }
         } else {
           if (latestActiveTabRef.current === "for-you") {
@@ -528,12 +595,16 @@ export function Jobs() {
           }
 
           setAllJobs(data);
-          if (Array.isArray(data) && data.length > 0) {
-            localStorage.setItem(cacheKey, JSON.stringify(data));
-            localStorage.setItem(`${cacheKey}_ts`, String(Date.now()));
-          } else {
-            localStorage.removeItem(cacheKey);
-            localStorage.removeItem(`${cacheKey}_ts`);
+          try {
+            if (Array.isArray(data) && data.length > 0) {
+              localStorage.setItem(cacheKey, JSON.stringify(data));
+              localStorage.setItem(`${cacheKey}_ts`, String(Date.now()));
+            } else {
+              localStorage.removeItem(cacheKey);
+              localStorage.removeItem(`${cacheKey}_ts`);
+            }
+          } catch (storageErr) {
+            console.warn("Failed to update cache in localStorage:", storageErr);
           }
         } else {
           if (
@@ -552,7 +623,8 @@ export function Jobs() {
         (activeTab === "for-you" ||
           latestSearchKeywordRef.current.trim().toLowerCase() === searchKeyword.trim().toLowerCase());
       if (isStillRelevant) {
-        setError("A network error occurred. Please check your connection and try again.");
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`A network error occurred (${msg}). Please check your connection and try again.`);
       }
     } finally {
       setIsDataLoading(false);
@@ -778,7 +850,7 @@ export function Jobs() {
     };
 
     if (activeTab === "for-you") {
-      return matches.filter((m) => m.job && passesAll(m.job));
+      return matches.filter((m) => !!m.job);
     }
     return allJobs.filter(passesAll);
   }, [activeTab, matches, allJobs, employmentTypes, remoteFilters, minSalaryK, resolvedCityState, selectedCountry, selectedState]);
@@ -874,23 +946,18 @@ export function Jobs() {
           <div className="flex items-center justify-end gap-2 shrink-0">
             <button
               onClick={() => fetchJobsData(true)}
-              disabled={isDataLoading || (refreshQuota !== null && refreshQuota.remaining === 0)}
+              disabled={isDataLoading}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 bg-white border border-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap shadow-xs"
               title={
                 refreshQuota === null
                   ? "Force refresh (bypass cache)"
-                  : refreshQuota.remaining === 0
-                  ? "Daily refresh limit reached. Resets at midnight UTC."
-                  : `Pulls fresh listings from the source. ${refreshQuota.remaining} left today.`
+                  : "Pulls fresh listings from the source."
               }
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isDataLoading ? "animate-spin" : ""}`} />
               Refresh
-              {/* Show explicit "X left" badge only when the user has spent
-                  at least one credit. Hiding it when fresh keeps the
-                  button visually quiet for the 99% of users who never hit
-                  the cap. */}
-              {refreshQuota !== null && refreshQuota.used > 0 && (
+              {/* Show explicit "X left" badge only when limit is not bypassed/large. */}
+              {refreshQuota !== null && refreshQuota.used > 0 && refreshQuota.limit < 100 && (
                 <span
                   className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap ${
                     refreshQuota.remaining === 0
@@ -904,28 +971,30 @@ export function Jobs() {
             </button>
             {/* Mobile filter toggle. Desktop has the panel always visible
                 to the right of the listings, so we hide this on lg+. */}
-            <button
-              onClick={() => setFiltersOpen((v) => !v)}
-              aria-expanded={filtersOpen}
-              aria-controls="jobs-filter-panel"
-              className={`lg:hidden flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer border whitespace-nowrap shadow-xs ${
-                filtersOpen
-                  ? "bg-slate-900 text-white border-slate-900"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 bg-white border-slate-200"
-              }`}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              Filters
-              {activeFilterCount > 0 && (
-                <span
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap ${
-                    filtersOpen ? "bg-white/20 text-white" : "bg-indigo-600 text-white"
-                  }`}
-                >
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
+            {activeTab === "search" && (
+              <button
+                onClick={() => setFiltersOpen((v) => !v)}
+                aria-expanded={filtersOpen}
+                aria-controls="jobs-filter-panel"
+                className={`lg:hidden flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer border whitespace-nowrap shadow-xs ${
+                  filtersOpen
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 bg-white border-slate-200"
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap ${
+                      filtersOpen ? "bg-white/20 text-white" : "bg-indigo-600 text-white"
+                    }`}
+                  >
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1002,21 +1071,11 @@ export function Jobs() {
                 </p>
                 <button
                   onClick={() => fetchJobsData(true)}
-                  disabled={isDataLoading || (refreshQuota !== null && refreshQuota.remaining === 0)}
-                  title={
-                    refreshQuota !== null && refreshQuota.remaining === 0
-                      ? "Daily refresh limit reached. Resets at midnight UTC."
-                      : undefined
-                  }
+                  disabled={isDataLoading}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isDataLoading ? "animate-spin" : ""}`} />
-                  {refreshQuota !== null && refreshQuota.remaining === 0
-                    ? "Daily limit reached"
-                    : "Try Again"}
-                  {refreshQuota !== null && refreshQuota.remaining > 0 && refreshQuota.used > 0 && (
-                    <span className="ml-1 opacity-80">({refreshQuota.remaining} left)</span>
-                  )}
+                  Try Again
                 </button>
               </div>
             ) : isDataLoading ? (
@@ -1057,36 +1116,43 @@ export function Jobs() {
 
                 // Source-empty + no filter → likely an AI/RapidAPI hiccup, not a real zero-result.
                 if (sourceEmpty && !isFiltered) {
+                  if (activeTab === "for-you") {
+                    return (
+                      <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center shadow-sm animate-in fade-in duration-300">
+                        <Briefcase className="w-12 h-12 text-indigo-400 mx-auto mb-4" />
+                        <h3 className="text-base font-bold text-slate-800 mb-1">
+                          No matches found
+                        </h3>
+                        <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
+                          We couldn't find any automatic matches for your profile right now. Try manually searching for a role instead.
+                        </p>
+                        <button
+                          onClick={() => setActiveTab("search")}
+                          className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs"
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                          Search Roles
+                        </button>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center shadow-sm">
                       <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-4" />
                       <h3 className="text-base font-bold text-slate-800 mb-1">
-                        {activeTab === "for-you"
-                          ? "Couldn't score your matches"
-                          : `No results for “${searchKeyword}”`}
+                        No results for “{searchKeyword}”
                       </h3>
                       <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5">
-                        {activeTab === "for-you"
-                          ? "The AI matcher is temporarily unavailable. This usually clears in a few seconds."
-                          : "Try a different keyword, or click Try Again to fetch fresh listings from the source."}
+                        Try a different keyword, or click Try Again to fetch fresh listings from the source.
                       </p>
                       <button
                         onClick={() => fetchJobsData(true)}
-                        disabled={isDataLoading || (refreshQuota !== null && refreshQuota.remaining === 0)}
-                        title={
-                          refreshQuota !== null && refreshQuota.remaining === 0
-                            ? "Daily refresh limit reached. Resets at midnight UTC."
-                            : undefined
-                        }
+                        disabled={isDataLoading}
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isDataLoading ? "animate-spin" : ""}`} />
-                        {refreshQuota !== null && refreshQuota.remaining === 0
-                          ? "Daily limit reached"
-                          : "Try Again"}
-                        {refreshQuota !== null && refreshQuota.remaining > 0 && refreshQuota.used > 0 && (
-                          <span className="ml-1 opacity-80">({refreshQuota.remaining} left)</span>
-                        )}
+                        Try Again
                       </button>
                     </div>
                   );
@@ -1162,7 +1228,7 @@ export function Jobs() {
                           )}
                           {job.salary_min && (
                             <span className="px-2 py-0.5 bg-emerald-50/50 text-emerald-600 text-[10px] font-bold rounded-md border border-emerald-50">
-                              {job.salary_currency || "$"}{Math.round(job.salary_min / 1000)}k+
+                              {getCurrencySymbol(job.salary_currency, job.location)}{Math.round(job.salary_min / 1000)}k+
                             </span>
                           )}
                         </div>
@@ -1218,7 +1284,8 @@ export function Jobs() {
               filtersOpen ? "block order-first" : "hidden lg:block"
             }`}
           >
-            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+            {activeTab === "search" && (
+              <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 text-slate-600 font-semibold text-[11px] uppercase tracking-wider">
                   <SlidersHorizontal className="w-3.5 h-3.5" /> Filter by
@@ -1469,7 +1536,8 @@ export function Jobs() {
               >
                 Done
               </button>
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1601,7 +1669,7 @@ export function Jobs() {
                 )}
                 {selectedJob.salary_min && (
                   <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-100">
-                    Salary: {selectedJob.salary_currency || "$"}{Math.round(selectedJob.salary_min / 1000)}k - {selectedJob.salary_max ? `${Math.round(selectedJob.salary_max / 1000)}k` : "Open"}
+                    Salary: {getCurrencySymbol(selectedJob.salary_currency, selectedJob.location)}{Math.round(selectedJob.salary_min / 1000)}k - {selectedJob.salary_max ? `${Math.round(selectedJob.salary_max / 1000)}k` : "Open"}
                   </span>
                 )}
               </div>

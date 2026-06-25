@@ -346,7 +346,11 @@ export function Review() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify(resumeData)
+        body: JSON.stringify({
+          resumeData,
+          id: resumeId,
+          job: job || undefined
+        })
       });
 
       const data = await response.json();
@@ -372,17 +376,24 @@ export function Review() {
 
   useEffect(() => {
     if (!resumeData.personalInfo.fullName || isReviewing) return;
-
-    const currentDataStr = JSON.stringify(resumeData, Object.keys(resumeData).sort());
     
-    // Trigger review if database flag says it's updated, OR if we have no review at all
-    const shouldRun = needsAnalysis || !savedReview;
+    // If we are waiting for the job details to load, do not run yet
+    if (jobId && !job && isLoadingJob) return;
+
+    const currentDataStr = JSON.stringify({ resumeData, jobId, job }, Object.keys({ resumeData, jobId, job }).sort());
+    
+    const savedReviewJobId = savedReview?.jobId || null;
+    const currentJobId = jobId || null;
+    const isJobMismatch = savedReviewJobId !== currentJobId;
+
+    // Trigger review if database flag says it's updated, OR if we have no review at all, OR if target job changed
+    const shouldRun = needsAnalysis || !savedReview || isJobMismatch;
 
     if (shouldRun && currentDataStr !== lastCheckedDataRef.current) {
       lastCheckedDataRef.current = currentDataStr;
       runReview();
     }
-  }, [resumeData, savedReview, needsAnalysis]);
+  }, [resumeData, savedReview, needsAnalysis, jobId, job, isLoadingJob]);
 
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
