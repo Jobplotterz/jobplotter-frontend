@@ -364,6 +364,13 @@ export function Applications() {
                   href={selectedJob.url}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => {
+                    const app = apps.find((a) => a.job?._id === selectedJob._id);
+                    if (app) {
+                      handleStatusChange(app._id, "applied");
+                      setSelectedJob(null);
+                    }
+                  }}
                   className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-all hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
                 >
                   Apply on Company Site

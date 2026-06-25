@@ -194,9 +194,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(() => {
     localStorage.removeItem("jobplotter_token");
-    setUser(null);
-    navigate("/login", { replace: true });
-  }, [navigate]);
+    window.location.href = "/";
+  }, []);
 
   // Hold the latest `logout` in a ref so the fetch interceptor below can
   // install ONCE on mount yet always call the up-to-date function.

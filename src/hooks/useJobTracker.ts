@@ -60,7 +60,7 @@ export function useJobTracker(jobId: string | null | undefined) {
     };
   }, [jobId]);
 
-  const track = async () => {
+  const track = async (status: ApplicationStatus = "saved") => {
     if (!jobId || isSaving) return;
     setIsSaving(true);
     try {
@@ -71,7 +71,7 @@ export function useJobTracker(jobId: string | null | undefined) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ jobId, status: "saved" }),
+        body: JSON.stringify({ jobId, status }),
       });
       if (res.ok) {
         const data = await res.json();

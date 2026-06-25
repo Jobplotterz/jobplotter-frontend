@@ -1746,7 +1746,7 @@ export function Jobs() {
                   </span>
                 ) : (
                   <button
-                    onClick={track}
+                    onClick={() => track()}
                     disabled={isTracking}
                     className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
@@ -1783,6 +1783,7 @@ export function Jobs() {
                     href={selectedJob.url}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => track("applied")}
                     className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white text-slate-700 border border-slate-200 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
                   >
                     Apply on Company Site
