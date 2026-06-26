@@ -74,10 +74,17 @@ export const ResumeUpload: React.FC<ResumeUploadProps> = ({ onSuccess, onClose }
       });
 
       if (!response.ok) {
-        if (response.status === 503) {
-          throw new Error('The AI extraction service is currently busy. Please try again or edit manually.');
+        let errorMsg = 'Failed to upload resume. Please try again.';
+        try {
+          const body = await response.clone().json();
+          if (body?.detail) errorMsg = body.detail;
+        } catch {
+          // ignore
         }
-        throw new Error('Failed to upload resume. Please try again.');
+        if (response.status === 503) {
+          errorMsg = 'The AI extraction service is currently busy. Please try again or edit manually.';
+        }
+        throw new Error(errorMsg);
       }
 
       setProgress(90);

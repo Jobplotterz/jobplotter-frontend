@@ -124,6 +124,15 @@ export function Review() {
   const messageForOptimizationFailure = async (response: Response | null, fallback: string) => {
     if (!response) return "We couldn't reach the AI Optimizer. Check your connection and try again.";
     if (response.status === 503) return "The AI Optimizer is briefly overloaded. This usually clears in a few seconds — try again.";
+    if (response.status === 429) {
+      try {
+        const body = await response.clone().json();
+        if (body?.detail) return body.detail;
+      } catch {
+        // ignore
+      }
+      return "You have reached your daily limit of AI operations. Please try again tomorrow.";
+    }
     if (response.status === 500) {
       try {
         const body = await response.clone().json();
@@ -358,7 +367,7 @@ export function Review() {
       if (response.ok && !data.error) {
         setReview(data);
       } else {
-        const errorMsg = data.error || "Failed to get AI review. Please try again.";
+        const errorMsg = data.error || data.detail || "Failed to get AI review. Please try again.";
         if (errorMsg.includes("high demand") || response.status === 503) {
           throw new Error("The AI Reviewer is currently in high demand. This is temporary, please click 'Try Again' in a few seconds.");
         }
