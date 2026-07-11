@@ -124,13 +124,15 @@ export function Settings() {
 
   return (
     <div className="max-w-3xl mx-auto w-full px-5 sm:px-8 py-8 font-sans text-slate-900">
-      <div className="flex items-center gap-3 mb-1">
-        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-11 h-11 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 shrink-0">
           <SettingsIcon className="w-5 h-5" />
         </div>
-        <h1 className="text-2xl sm:text-[1.75rem] font-extrabold">Settings</h1>
+        <div>
+          <h1 className="text-2xl sm:text-[1.75rem] font-extrabold leading-none">Settings</h1>
+          <p className="text-sm text-slate-500 mt-1.5">Manage your resume defaults and profile information.</p>
+        </div>
       </div>
-      <p className="text-sm text-slate-500 mb-6 ml-13">Manage your resume defaults and profile information.</p>
 
       {/* Tabs Control */}
       <div className="flex bg-slate-100 p-1 rounded-2xl gap-1 mb-8 max-w-sm border border-slate-200/50">

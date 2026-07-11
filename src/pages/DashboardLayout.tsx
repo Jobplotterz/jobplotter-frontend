@@ -26,35 +26,36 @@ export function DashboardLayout() {
         <Link to="/" className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
           <img src="/jp-logo.png" alt="Jobplotter" className="h-8 w-auto object-contain" />
         </Link>
-        <button 
-          className="md:hidden ml-auto p-2 text-slate-500"
+        <button
+          className="md:hidden ml-auto p-2 text-slate-500 hover:text-slate-700"
           onClick={() => setIsMobileMenuOpen(false)}
         >
           <X className="w-6 h-6" />
         </button>
       </div>
 
-      <div className="px-6 py-6 border-b border-slate-200">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 border border-slate-200">
+      <div className="px-4 pt-5 pb-3">
+        <div className="flex items-center gap-3 bg-slate-50 ring-1 ring-slate-100 rounded-2xl p-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 overflow-hidden shrink-0">
             {user?.image ? (
-              <img src={user.image} alt="" className="w-10 h-10 rounded-full" />
+              <img src={user.image} alt="" className="w-full h-full object-cover" />
             ) : (
               <User className="w-5 h-5" />
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-900 truncate">
+            <p className="text-sm font-bold text-slate-900 truncate">
               {user?.name || "User"}
             </p>
-            <p className="text-xs text-slate-500 truncate">
+            <p className="text-[11px] text-slate-500 truncate">
               {user?.email || "Signed in"}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-6 px-4">
+      <div className="flex-1 overflow-y-auto py-3 px-3">
+        <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Menu</p>
         <nav className="space-y-1">
           {navigation.map((item) => {
             const active = isActive(item.href);
@@ -63,15 +64,15 @@ export function DashboardLayout() {
                 key={item.name}
                 to={item.href}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className={`flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                className={`group flex items-center px-3 py-2.5 text-sm font-semibold rounded-xl transition-colors ${
                   active
                     ? "bg-indigo-50 text-indigo-700"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }`}
               >
                 <item.icon
-                  className={`w-5 h-5 mr-3 shrink-0 ${
-                    active ? "text-indigo-600" : "text-slate-400"
+                  className={`w-5 h-5 mr-3 shrink-0 transition-colors ${
+                    active ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600"
                   }`}
                 />
                 {item.name}
@@ -81,24 +82,24 @@ export function DashboardLayout() {
         </nav>
       </div>
 
-      <div className="p-4 border-t border-slate-200 space-y-1">
+      <div className="p-3 border-t border-slate-200 space-y-1">
         <Link
           to="/dashboard/settings"
           onClick={() => setIsMobileMenuOpen(false)}
-          className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+          className={`group w-full flex items-center px-3 py-2.5 text-sm font-semibold rounded-xl transition-colors ${
             isActive("/dashboard/settings")
               ? "bg-indigo-50 text-indigo-700"
               : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
           }`}
         >
-          <Settings className={`w-5 h-5 mr-3 shrink-0 ${isActive("/dashboard/settings") ? "text-indigo-600" : "text-slate-400"}`} />
+          <Settings className={`w-5 h-5 mr-3 shrink-0 transition-colors ${isActive("/dashboard/settings") ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600"}`} />
           Settings
         </Link>
         <button
           onClick={logout}
-          className="w-full flex items-center px-3 py-2.5 text-sm font-medium text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+          className="w-full flex items-center px-3 py-2.5 text-sm font-semibold text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
         >
-          <LogOut className="w-5 h-5 mr-3 text-red-500 shrink-0" />
+          <LogOut className="w-5 h-5 mr-3 shrink-0" />
           Sign out
         </button>
       </div>

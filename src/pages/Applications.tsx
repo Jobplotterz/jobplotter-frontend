@@ -165,16 +165,18 @@ export function Applications() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto w-full px-5 sm:px-8 py-8 font-sans text-slate-900">
-      <div className="flex items-center gap-3 mb-1">
-        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+    <div className="max-w-6xl mx-auto w-full px-5 sm:px-8 py-8 font-sans text-slate-900">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-11 h-11 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 shrink-0">
           <ClipboardList className="w-5 h-5" />
         </div>
-        <h1 className="text-2xl sm:text-[1.75rem] font-extrabold">Applications</h1>
+        <div>
+          <h1 className="text-2xl sm:text-[1.75rem] font-extrabold leading-none">Applications</h1>
+          <p className="text-sm text-slate-500 mt-1.5">
+            Jobs you've saved or applied to. Update the status as you progress.
+          </p>
+        </div>
       </div>
-      <p className="text-sm text-slate-500 mb-6 ml-13">
-        Jobs you've saved or applied to. Update the status as you progress.
-      </p>
 
       {/* Filter chips */}
       <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1">
