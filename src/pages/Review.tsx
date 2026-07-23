@@ -443,11 +443,11 @@ export function Review() {
     <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 overflow-hidden">
       <header className="h-14 shrink-0 border-b border-slate-200 bg-white px-4 sm:px-6 flex items-center justify-between">
         <Link
-          to="/dashboard/jobs"
+          to={`/dashboard/builder${resumeId ? `?resumeId=${resumeId}` : ""}`}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          Back to Jobs
+          Back to Resume Builder
         </Link>
         <button
           onClick={handleDownload}
