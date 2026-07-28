@@ -5,15 +5,37 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, User, Briefcase, GraduationCap, Wrench, Award } from "lucide-react";
+import { Plus, Trash2, User, Briefcase, GraduationCap, Wrench, Award, Sparkles, Loader2 } from "lucide-react";
 
 interface ResumeFormProps {
   data: ResumeData;
   onChange: (data: ResumeData) => void;
 }
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+
+function AiRewriteButton({ onClick, loading, disabled }: { onClick: () => void; loading: boolean; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || loading}
+      title="Improve with AI"
+      className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 disabled:text-slate-300 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0"
+    >
+      {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+      {loading ? "Improving..." : "Improve"}
+    </button>
+  );
+}
+
 export function ResumeForm({ data, onChange }: ResumeFormProps) {
   const [skillsInput, setSkillsInput] = useState(data.skills.join(", "));
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [improvingSummary, setImprovingSummary] = useState(false);
+  const [summaryUndo, setSummaryUndo] = useState<string | null>(null);
+  const [improvingExpId, setImprovingExpId] = useState<string | null>(null);
+  const [expUndo, setExpUndo] = useState<Record<string, string>>({});
 
   // Sync internal skills input when data.skills changes externally
   useEffect(() => {
@@ -111,12 +133,115 @@ export function ResumeForm({ data, onChange }: ResumeFormProps) {
     });
   };
 
+  // Maps a failed /improve-field response to a human-friendly message,
+  // mirroring the 429/503/500 handling used for the whole-resume AI actions in Review.tsx.
+  const messageForImproveFailure = async (response: Response | null, fallback: string) => {
+    if (!response) return "We couldn't reach the AI. Check your connection and try again.";
+    if (response.status === 503) return "The AI is briefly overloaded. Try again in a few seconds.";
+    if (response.status === 429) {
+      try {
+        const body = await response.clone().json();
+        if (body?.detail) return body.detail;
+      } catch {
+        // ignore
+      }
+      return "You have reached your daily limit of AI operations. Please try again tomorrow.";
+    }
+    if (response.status === 500) {
+      try {
+        const body = await response.clone().json();
+        const detail = (body?.detail || "").toString().toLowerCase();
+        if (detail.includes("high demand") || detail.includes("unavailable") || detail.includes("internal error")) {
+          return "The AI hit a temporary hiccup. Try again in a moment.";
+        }
+      } catch {
+        // ignore
+      }
+      return "Something went wrong on the AI side. Give it another try.";
+    }
+    return fallback;
+  };
+
+  const improveText = async (fieldType: "summary" | "experience", text: string, context: Record<string, string>): Promise<string | null> => {
+    setAiError(null);
+    let response: Response | null = null;
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      response = await fetch(`${API_URL}/resumes/improve-field`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ fieldType, text, context })
+      });
+      if (response.ok) {
+        const result = await response.json();
+        return result.improvedText as string;
+      }
+      throw new Error("Failed to improve text");
+    } catch {
+      setAiError(await messageForImproveFailure(response, "We couldn't improve this text. Try again."));
+      return null;
+    }
+  };
+
+  const handleImproveSummary = async () => {
+    const text = data.personalInfo.summary;
+    if (!text.trim() || improvingSummary) return;
+    setImprovingSummary(true);
+    const improved = await improveText("summary", text, { jobTitle: data.personalInfo.jobTitle });
+    setImprovingSummary(false);
+    if (improved) {
+      setSummaryUndo(text);
+      updatePersonalInfo("summary", improved);
+    }
+  };
+
+  const undoSummary = () => {
+    if (summaryUndo !== null) {
+      updatePersonalInfo("summary", summaryUndo);
+      setSummaryUndo(null);
+    }
+  };
+
+  const handleImproveExperience = async (exp: ResumeData['experience'][0]) => {
+    const text = exp.description;
+    if (!text.trim() || improvingExpId) return;
+    setImprovingExpId(exp.id);
+    const improved = await improveText("experience", text, { position: exp.position, company: exp.company });
+    setImprovingExpId(null);
+    if (improved) {
+      setExpUndo(prev => ({ ...prev, [exp.id]: text }));
+      updateExperience(exp.id, "description", improved);
+    }
+  };
+
+  const undoExperience = (id: string) => {
+    const prevText = expUndo[id];
+    if (prevText !== undefined) {
+      updateExperience(id, "description", prevText);
+      setExpUndo(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+  };
+
   return (
     <div className="p-5 sm:p-6 lg:p-8 max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 mb-0.5">Resume Builder</h1>
         <p className="text-[13px] text-slate-500">Fill in your details to generate your resume.</p>
       </div>
+
+      {aiError && (
+        <div className="flex items-start justify-between gap-2 px-3 py-2 bg-red-50 border border-red-100 rounded-lg text-[12px] text-red-600">
+          <span>{aiError}</span>
+          <button type="button" onClick={() => setAiError(null)} className="text-red-400 hover:text-red-600 cursor-pointer shrink-0">✕</button>
+        </div>
+      )}
 
       <Accordion type="multiple" defaultValue={["personal", "experience", "education", "skills"]} className="w-full space-y-3">
 
@@ -158,8 +283,16 @@ export function ResumeForm({ data, onChange }: ResumeFormProps) {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="summary" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Professional Summary</Label>
-              <Textarea id="summary" value={data.personalInfo.summary} onChange={e => updatePersonalInfo("summary", e.target.value)} placeholder="Brief overview of your career and skills..." className="h-20 text-[13px] border-slate-200 focus-visible:ring-indigo-500 resize-none" />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="summary" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Professional Summary</Label>
+                <div className="flex items-center gap-2">
+                  {summaryUndo !== null && (
+                    <button type="button" onClick={undoSummary} className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer">Undo</button>
+                  )}
+                  <AiRewriteButton onClick={handleImproveSummary} loading={improvingSummary} disabled={!data.personalInfo.summary.trim()} />
+                </div>
+              </div>
+              <Textarea id="summary" value={data.personalInfo.summary} onChange={e => { updatePersonalInfo("summary", e.target.value); setSummaryUndo(null); }} placeholder="Brief overview of your career and skills..." className="h-20 text-[13px] border-slate-200 focus-visible:ring-indigo-500 resize-none" />
             </div>
           </AccordionContent>
         </AccordionItem>
@@ -205,8 +338,16 @@ export function ResumeForm({ data, onChange }: ResumeFormProps) {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Description</Label>
-                  <Textarea value={exp.description} onChange={e => updateExperience(exp.id, "description", e.target.value)} placeholder="Describe your responsibilities and achievements..." className="h-20 text-[13px] border-slate-200 focus-visible:ring-indigo-500 resize-none" />
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Description</Label>
+                    <div className="flex items-center gap-2">
+                      {expUndo[exp.id] !== undefined && (
+                        <button type="button" onClick={() => undoExperience(exp.id)} className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer">Undo</button>
+                      )}
+                      <AiRewriteButton onClick={() => handleImproveExperience(exp)} loading={improvingExpId === exp.id} disabled={!exp.description.trim()} />
+                    </div>
+                  </div>
+                  <Textarea value={exp.description} onChange={e => { updateExperience(exp.id, "description", e.target.value); setExpUndo(prev => { if (!(exp.id in prev)) return prev; const next = { ...prev }; delete next[exp.id]; return next; }); }} placeholder="Describe your responsibilities and achievements..." className="h-20 text-[13px] border-slate-200 focus-visible:ring-indigo-500 resize-none" />
                 </div>
               </div>
             ))}
