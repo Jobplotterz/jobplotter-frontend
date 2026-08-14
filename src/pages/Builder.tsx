@@ -1,40 +1,93 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { FileText, Eye, Download, ScanSearch, Save, Loader2, ChevronDown, Edit2, Check } from "lucide-react";
+import { FileText, Eye, Download, ScanSearch, Save, Loader2, ChevronDown, Edit2, Check, Sparkles, Lock } from "lucide-react";
 import { useResumeData } from "../types";
 import { ResumeForm } from "../components/ResumeForm";
+import { AiCoBuilderModal } from "../components/AiCoBuilderModal";
 import { getStoredTemplate, TemplateId } from "../components/resumeTemplateMeta";
+import { lazyWithRetry } from "../lib/lazyWithRetry";
 
 // Lazy so the heavy @react-pdf/renderer bundle only loads on this page, not app-wide.
-const ResumePdfPreview = lazy(() => import("../components/ResumePdfPreview"));
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+const ResumePdfPreview = lazyWithRetry(() => import("../components/ResumePdfPreview"));
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 
 export function Builder() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const resumeIdFromUrl = searchParams.get("resumeId");
-  const [resumeData, setResumeData, saveToBackend, isSaving, resumes, loadResume, title, setTitle, currentResumeId, savedReview, lastReviewedHash, needsAnalysis] = useResumeData(resumeIdFromUrl);
+  // Captured once at mount, deliberately not re-read from `searchParams` on
+  // every render: `useResumeData`'s initialId param is only meant to steer
+  // the initial load. If we passed the live `searchParams.get(...)` value,
+  // clearing the query param below would flip it from an id to null on the
+  // very next render, racing with the still-in-flight load and occasionally
+  // resetting the editor back to a blank resume.
+  const [initialResumeId] = useState(() => searchParams.get("resumeId"));
+  const [resumeData, setResumeData, saveToBackend, isSaving, resumes, loadResume, title, setTitle, currentResumeId, savedReview, lastReviewedHash, needsAnalysis] = useResumeData(initialResumeId);
   const [showPreview, setShowPreview] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [cachedDownload, setCachedDownload] = useState<{hash: string, blob: Blob} | null>(null);
   const [template, setTemplate] = useState<TemplateId>(getStoredTemplate());
+  const [showAiBuilder, setShowAiBuilder] = useState(false);
+  const [userPlan, setUserPlan] = useState<string>("free");
+  const [isDownloadingDocx, setIsDownloadingDocx] = useState(false);
 
   // Strip the `?resumeId=...` query param once the hook has loaded that
   // resume into the editor. We deliberately do NOT change the user's default
   // resume here — default-setting lives in Settings only.
   useEffect(() => {
-    if (!resumeIdFromUrl) return;
+    if (!initialResumeId) return;
     setSearchParams({}, { replace: true });
-  }, [resumeIdFromUrl, setSearchParams]);
+  }, [initialResumeId, setSearchParams]);
+
+  useEffect(() => {
+    const fetchPlan = async () => {
+      try {
+        const token = localStorage.getItem("jobplotter_token");
+        const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/billing/status`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const result = await response.json();
+          setUserPlan(result.plan || "free");
+        }
+      } catch (e) {
+        console.error("Failed to fetch billing status:", e);
+      }
+    };
+    fetchPlan();
+  }, []);
 
   const handleLoadResume = async (id: string) => {
     await loadResume(id);
     setIsEditingTitle(false);
+  };
+
+  // iOS Safari ignores <a download> for blob URLs (renders inline), so on
+  // iOS we navigate a pre-opened tab to the blob and let the user Save to
+  // Files. Elsewhere, a same-origin blob URL + download attribute works
+  // reliably. Shared between the PDF and DOCX download paths.
+  const isIOSDevice = () =>
+    /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  const downloadBlob = (blob: Blob, filename: string, iosTab: Window | null, isIOS: boolean) => {
+    const objectUrl = URL.createObjectURL(blob);
+    if (isIOS) {
+      if (iosTab) iosTab.location.href = objectUrl;
+      else window.location.href = objectUrl;
+    } else {
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
   };
 
   const handleDownload = async () => {
@@ -42,35 +95,13 @@ export function Builder() {
     const currentHash = JSON.stringify({ d: resumeData, t: template });
     const filename = `${resumeData.personalInfo.fullName || 'resume'}.pdf`;
 
-    // iOS Safari ignores <a download> for blob URLs (renders inline), so on
-    // iOS we navigate a tab to the blob and let the user Save to Files.
-    // Elsewhere, a same-origin blob URL + download attribute downloads reliably.
-    const isIOS =
-      /iP(hone|ad|od)/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
+    const isIOS = isIOSDevice();
     // Pre-open the iOS tab synchronously (before any await) so it isn't blocked.
     const iosTab = isIOS ? window.open("", "_blank") : null;
 
-    const saveBlob = (blob: Blob) => {
-      const objectUrl = URL.createObjectURL(blob);
-      if (isIOS) {
-        if (iosTab) iosTab.location.href = objectUrl;
-        else window.location.href = objectUrl;
-      } else {
-        const a = document.createElement('a');
-        a.href = objectUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
-    };
-
     // Reuse already-fetched bytes for the same content.
     if (cachedDownload && cachedDownload.hash === currentHash) {
-      saveBlob(cachedDownload.blob);
+      downloadBlob(cachedDownload.blob, filename, iosTab, isIOS);
       return;
     }
 
@@ -82,13 +113,54 @@ export function Builder() {
       const { generateResumePdfBlob } = await import('../components/resumeTemplates');
       const blob = await generateResumePdfBlob(resumeData, template);
       setCachedDownload({ hash: currentHash, blob });
-      saveBlob(blob);
+      downloadBlob(blob, filename, iosTab, isIOS);
     } catch (err) {
       console.error('PDF Generation Error:', err);
       if (iosTab) iosTab.close();
       alert('Failed to generate PDF. Please try again.');
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleDownloadDocx = async () => {
+    if (userPlan === "free" || isDownloadingDocx) return;
+
+    const filename = `${resumeData.personalInfo.fullName || 'resume'}.docx`;
+    const isIOS = isIOSDevice();
+    const iosTab = isIOS ? window.open("", "_blank") : null;
+
+    try {
+      setIsDownloadingDocx(true);
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/export-docx`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ data: resumeData })
+      });
+
+      if (!response.ok) {
+        let errorMsg = "Failed to generate DOCX. Please try again.";
+        try {
+          const body = await response.clone().json();
+          if (body?.detail) errorMsg = body.detail;
+        } catch {
+          // ignore
+        }
+        throw new Error(errorMsg);
+      }
+
+      const blob = await response.blob();
+      downloadBlob(blob, filename, iosTab, isIOS);
+    } catch (err: any) {
+      console.error('DOCX Generation Error:', err);
+      if (iosTab) iosTab.close();
+      alert(err?.message || 'Failed to generate DOCX. Please try again.');
+    } finally {
+      setIsDownloadingDocx(false);
     }
   };
 
@@ -169,6 +241,12 @@ export function Builder() {
 
         <div className="flex items-center gap-2 shrink-0">
           <button
+            onClick={() => setShowAiBuilder(true)}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-all cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Build with AI
+          </button>
+          <button
             onClick={() => saveToBackend(resumeData, title)}
             disabled={isSaving}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all disabled:opacity-50 cursor-pointer"
@@ -181,14 +259,43 @@ export function Builder() {
               <ScanSearch className="w-3.5 h-3.5" /> Review
             </Link>
           )}
-          <button 
-            onClick={handleDownload}
-            disabled={isDownloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all shadow-sm cursor-pointer disabled:opacity-70"
-          >
-            {isDownloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-            {isDownloading ? "Generating..." : "Download"}
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              disabled={isDownloading || isDownloadingDocx}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all shadow-sm cursor-pointer disabled:opacity-70 focus:outline-none"
+            >
+              {(isDownloading || isDownloadingDocx) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              {isDownloading ? "Generating..." : isDownloadingDocx ? "Generating..." : "Download"}
+              <ChevronDown className="w-3.5 h-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52 p-2 rounded-xl shadow-xl border-slate-200">
+              <DropdownMenuItem
+                onClick={handleDownload}
+                className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:bg-slate-50"
+              >
+                <FileText className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-sm font-bold text-slate-700">Download PDF</span>
+              </DropdownMenuItem>
+              {userPlan === "free" ? (
+                <Link
+                  to="/pricing"
+                  className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:bg-slate-50"
+                >
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-sm font-bold text-slate-700 flex-1">Download DOCX</span>
+                  <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-600 rounded-full">Pro</span>
+                </Link>
+              ) : (
+                <DropdownMenuItem
+                  onClick={handleDownloadDocx}
+                  className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:bg-slate-50"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="text-sm font-bold text-slate-700">Download DOCX</span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -247,6 +354,13 @@ export function Builder() {
           </div>
         </div>
       </div>
+
+      {showAiBuilder && (
+        <AiCoBuilderModal
+          onClose={() => setShowAiBuilder(false)}
+          onApply={(generated) => setResumeData(generated)}
+        />
+      )}
     </div>
   );
 }

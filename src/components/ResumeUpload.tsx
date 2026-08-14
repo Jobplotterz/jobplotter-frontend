@@ -11,7 +11,9 @@ export const ResumeUpload: React.FC<ResumeUploadProps> = ({ onSuccess, onClose }
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [ocrNote, setOcrNote] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const extractedDataRef = useRef<any>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -89,12 +91,22 @@ export const ResumeUpload: React.FC<ResumeUploadProps> = ({ onSuccess, onClose }
 
       setProgress(90);
       const result = await response.json();
-      
+      // If extractedData is empty but we have a success response,
+      // it means upload worked but AI failed. Still allow user to proceed.
+      extractedDataRef.current = result.extractedData || {};
       setProgress(100);
+
+      if (result.ocrUsed) {
+        // Scanned document — pause on an explicit note instead of
+        // auto-closing, since OCR'd extraction is more likely to need a
+        // once-over before the user trusts it.
+        setOcrNote(true);
+        setIsUploading(false);
+        return;
+      }
+
       setTimeout(() => {
-        // If extractedData is empty but we have a success response, 
-        // it means upload worked but AI failed. Still allow user to proceed.
-        onSuccess(result.extractedData || {});
+        onSuccess(extractedDataRef.current);
         onClose();
       }, 500);
 
@@ -132,6 +144,7 @@ export const ResumeUpload: React.FC<ResumeUploadProps> = ({ onSuccess, onClose }
               <div className="text-center">
                 <p className="font-bold text-slate-900">Click to upload or drag & drop</p>
                 <p className="text-sm text-slate-500 mt-1">PDF, DOCX or TXT (Max 5MB)</p>
+                <p className="text-xs text-slate-400 mt-1">Text-based files work best. Scanned PDFs are supported too — they may just take a little longer.</p>
               </div>
               <input 
                 type="file" 
@@ -186,12 +199,28 @@ export const ResumeUpload: React.FC<ResumeUploadProps> = ({ onSuccess, onClose }
                 </div>
               )}
 
-              {!isUploading && (
+              {ocrNote && (
+                <div className="flex items-start gap-3 p-4 bg-indigo-50 text-indigo-700 rounded-2xl border border-indigo-100 text-sm">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  <p className="font-medium">This looked like a scanned document, so we used AI to read it. Please double-check the extracted details.</p>
+                </div>
+              )}
+
+              {!isUploading && !ocrNote && (
                 <button
                   onClick={handleUpload}
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2"
                 >
                   Confirm Upload
+                </button>
+              )}
+
+              {ocrNote && (
+                <button
+                  onClick={() => { onSuccess(extractedDataRef.current); onClose(); }}
+                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2"
+                >
+                  Continue
                 </button>
               )}
             </div>
