@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { AlertCircle, ArrowLeft, Download, Info, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useResumeData } from "../types";
 import { getStoredTemplate, TemplateId } from "../components/resumeTemplateMeta";
+import { lazyWithRetry } from "../lib/lazyWithRetry";
 
 // Lazy so the heavy @react-pdf/renderer bundle only loads on this page, not app-wide.
-const ResumePdfPreview = lazy(() => import("../components/ResumePdfPreview"));
+const ResumePdfPreview = lazyWithRetry(() => import("../components/ResumePdfPreview"));
 
 // Look up a cached job by id (Convex `_id` or external `jobId`) across all
 // per-resume caches the Jobs page may have populated. Lets us hydrate the
@@ -32,6 +33,35 @@ function findCachedJob(id: string): any | null {
   return null;
 }
 
+// Review's AI suggestions/detailedFeedback carry a field reference so a fix
+// can be applied inline; a cached review from before this existed is a flat
+// string, so callers must normalize through this before rendering.
+interface NormalizedSuggestion {
+  text: string;
+  fieldType: "summary" | "experience" | "skills" | "general";
+  targetId: string | null;
+  suggestedSkill: string | null;
+  scoreImpact: number | null;
+}
+
+function normalizeSuggestion(raw: any): NormalizedSuggestion {
+  if (typeof raw === "string") {
+    return { text: raw, fieldType: "general", targetId: null, suggestedSkill: null, scoreImpact: null };
+  }
+  return {
+    text: raw?.text ?? "",
+    fieldType: raw?.fieldType ?? "general",
+    targetId: raw?.targetId ?? null,
+    suggestedSkill: raw?.suggestedSkill ?? null,
+    scoreImpact: typeof raw?.scoreImpact === "number" ? raw.scoreImpact : null,
+  };
+}
+
+type FixUndo =
+  | { kind: "summary"; prevText: string }
+  | { kind: "experience"; expId: string; prevText: string }
+  | { kind: "skill"; skill: string };
+
 export function Review() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -50,6 +80,11 @@ export function Review() {
   const [optimizationNudgeMessage, setOptimizationNudgeMessage] = useState<string | null>(null);
   const [pendingMatchInfo, setPendingMatchInfo] = useState<any | null>(null);
   const [pendingReview, setPendingReview] = useState<any | null>(null);
+  // Per-suggestion "Apply Fix"/"Add to Skills" state, keyed by a stable
+  // string per suggestion/detailedFeedback item (e.g. "sugg-2", "content-0").
+  const [fixingKey, setFixingKey] = useState<string | null>(null);
+  const [fixUndo, setFixUndo] = useState<Record<string, FixUndo>>({});
+  const [fixError, setFixError] = useState<string | null>(null);
   // Cache the fetched PDF bytes by content hash so back-to-back clicks on the
   // same resume (e.g. toggling optimized/original) don't re-fetch or re-generate.
   const [cachedDownload, setCachedDownload] = useState<{ hash: string; blob: Blob } | null>(null);
@@ -154,6 +189,90 @@ export function Review() {
       return "Something went wrong on the AI side. Give it another try.";
     }
     return fallback;
+  };
+
+  // Applies a single suggestion inline by reusing the same /improve-field
+  // endpoint ResumeForm's per-field "Improve" buttons call — the suggestion's
+  // own text is passed as `guidance` so the rewrite targets that specific
+  // feedback instead of a fully generic pass.
+  const applyFieldFix = async (key: string, fieldType: "summary" | "experience", targetId: string | null, guidance: string) => {
+    if (fixingKey) return;
+
+    let currentText: string;
+    let context: Record<string, any>;
+    if (fieldType === "summary") {
+      currentText = resumeData.personalInfo.summary;
+      context = { jobTitle: resumeData.personalInfo.jobTitle, guidance };
+    } else {
+      const exp = resumeData.experience.find(e => e.id === targetId);
+      if (!exp) return;
+      currentText = exp.description;
+      context = { position: exp.position, company: exp.company, guidance };
+    }
+    if (!currentText.trim()) return;
+
+    setFixingKey(key);
+    setFixError(null);
+    let response: Response | null = null;
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/improve-field`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ fieldType, text: currentText, context })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const improved = result.improvedText as string;
+        if (fieldType === "summary") {
+          setFixUndo(prev => ({ ...prev, [key]: { kind: "summary", prevText: currentText } }));
+          setResumeData({ ...resumeData, personalInfo: { ...resumeData.personalInfo, summary: improved } });
+        } else if (targetId) {
+          setFixUndo(prev => ({ ...prev, [key]: { kind: "experience", expId: targetId, prevText: currentText } }));
+          setResumeData({
+            ...resumeData,
+            experience: resumeData.experience.map(e => e.id === targetId ? { ...e, description: improved } : e)
+          });
+        }
+      } else {
+        throw new Error("Failed to apply fix");
+      }
+    } catch {
+      setFixError(await messageForOptimizationFailure(response, "We couldn't apply this fix. Try again."));
+    } finally {
+      setFixingKey(null);
+    }
+  };
+
+  // Skill suggestions are a pure local edit — no AI call, no quota cost.
+  const addSkillFix = (key: string, skill: string) => {
+    if (resumeData.skills.includes(skill)) return;
+    setFixUndo(prev => ({ ...prev, [key]: { kind: "skill", skill } }));
+    setResumeData({ ...resumeData, skills: [...resumeData.skills, skill] });
+  };
+
+  const undoFix = (key: string) => {
+    const u = fixUndo[key];
+    if (!u) return;
+    if (u.kind === "summary") {
+      setResumeData({ ...resumeData, personalInfo: { ...resumeData.personalInfo, summary: u.prevText } });
+    } else if (u.kind === "experience") {
+      setResumeData({
+        ...resumeData,
+        experience: resumeData.experience.map(e => e.id === u.expId ? { ...e, description: u.prevText } : e)
+      });
+    } else {
+      setResumeData({ ...resumeData, skills: resumeData.skills.filter(s => s !== u.skill) });
+    }
+    setFixUndo(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const runJobOptimization = async () => {
@@ -774,13 +893,57 @@ export function Review() {
                     </div>
                   </div>
 
+                  {fixError && (
+                    <div className="flex items-start justify-between gap-2 mb-3 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[11px] text-red-300">
+                      <span>{fixError}</span>
+                      <button onClick={() => setFixError(null)} className="text-red-300/70 hover:text-red-200 cursor-pointer shrink-0">✕</button>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
-                    {review?.suggestions?.map((text: string, i: number) => (
-                      <div key={i} className="flex gap-2.5 bg-white/5 p-3 rounded-lg border border-white/5 hover:bg-white/10 transition-colors">
-                        <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
-                        <p className="text-xs text-slate-300 leading-relaxed font-medium">{text}</p>
-                      </div>
-                    ))}
+                    {review?.suggestions?.map((raw: any, i: number) => {
+                      const s = normalizeSuggestion(raw);
+                      const key = `sugg-${i}`;
+                      const canFix = s.fieldType === "summary" || (s.fieldType === "experience" && !!s.targetId);
+                      const canAddSkill = s.fieldType === "skills" && !!s.suggestedSkill && !resumeData.skills.includes(s.suggestedSkill);
+                      const undone = fixUndo[key];
+                      return (
+                        <div key={i} className="flex gap-2.5 bg-white/5 p-3 rounded-lg border border-white/5 hover:bg-white/10 transition-colors">
+                          <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs text-slate-300 leading-relaxed font-medium">{s.text}</p>
+                              {s.scoreImpact !== null && (
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap">+~{s.scoreImpact} pts</span>
+                              )}
+                            </div>
+                            {(canFix || canAddSkill || undone) && (
+                              <div className="flex items-center gap-3 mt-1.5">
+                                {undone ? (
+                                  <button onClick={() => undoFix(key)} className="text-[11px] font-semibold text-slate-400 hover:text-white cursor-pointer">Undo</button>
+                                ) : canFix ? (
+                                  <button
+                                    onClick={() => applyFieldFix(key, s.fieldType as "summary" | "experience", s.targetId, s.text)}
+                                    disabled={fixingKey === key}
+                                    className="flex items-center gap-1 text-[11px] font-bold text-indigo-300 hover:text-indigo-200 disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {fixingKey === key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                    {fixingKey === key ? "Applying..." : "Apply Fix"}
+                                  </button>
+                                ) : canAddSkill ? (
+                                  <button
+                                    onClick={() => addSkillFix(key, s.suggestedSkill as string)}
+                                    className="text-[11px] font-bold text-indigo-300 hover:text-indigo-200 cursor-pointer"
+                                  >
+                                    + Add "{s.suggestedSkill}" to Skills
+                                  </button>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -795,15 +958,50 @@ export function Review() {
                         </div>
                       </AccordionTrigger>
                       <AccordionContent className="pb-4 space-y-3">
-                        {feedback?.map((item: any, i: number) => (
-                          <div key={i} className="flex gap-3 bg-amber-50/40 p-4 rounded-xl border border-amber-100/50">
-                            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                            <div>
-                              <h4 className="text-xs font-bold text-amber-900 mb-1">{item.title}</h4>
-                              <p className="text-[11px] text-amber-800 leading-relaxed font-medium">{item.desc}</p>
+                        {feedback?.map((item: any, i: number) => {
+                          const key = `${category}-${i}`;
+                          const canFix = item.fieldType === "summary" || (item.fieldType === "experience" && !!item.targetId);
+                          const canAddSkill = !!item.suggestedSkill && !resumeData.skills.includes(item.suggestedSkill);
+                          const scoreImpact = typeof item.scoreImpact === "number" ? item.scoreImpact : null;
+                          const undone = fixUndo[key];
+                          return (
+                            <div key={i} className="flex gap-3 bg-amber-50/40 p-4 rounded-xl border border-amber-100/50">
+                              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <h4 className="text-xs font-bold text-amber-900 mb-1">{item.title}</h4>
+                                  {scoreImpact !== null && (
+                                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap">+~{scoreImpact} pts</span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-amber-800 leading-relaxed font-medium">{item.desc}</p>
+                                {(canFix || canAddSkill || undone) && (
+                                  <div className="flex items-center gap-3 mt-2">
+                                    {undone ? (
+                                      <button onClick={() => undoFix(key)} className="text-[11px] font-semibold text-amber-600 hover:text-amber-800 cursor-pointer">Undo</button>
+                                    ) : canFix ? (
+                                      <button
+                                        onClick={() => applyFieldFix(key, item.fieldType, item.targetId, `${item.title}: ${item.desc}`)}
+                                        disabled={fixingKey === key}
+                                        className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 cursor-pointer"
+                                      >
+                                        {fixingKey === key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                        {fixingKey === key ? "Applying..." : "Apply Fix"}
+                                      </button>
+                                    ) : canAddSkill ? (
+                                      <button
+                                        onClick={() => addSkillFix(key, item.suggestedSkill)}
+                                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                                      >
+                                        + Add "{item.suggestedSkill}" to Skills
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </AccordionContent>
                     </AccordionItem>
                   ))}

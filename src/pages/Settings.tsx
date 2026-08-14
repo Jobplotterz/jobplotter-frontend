@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
-import { FileText, Check, Loader2, Clock, Settings as SettingsIcon, User, Key } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { FileText, Check, Loader2, Clock, Settings as SettingsIcon, User, Key, CreditCard } from "lucide-react";
+import { signalExtensionSync, signalExtensionResumeSwitch } from "../lib/extensionSync";
 
 export function Settings() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [resumes, setResumes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"resume" | "profile">("resume");
+  const [activeTab, setActiveTab] = useState<"resume" | "profile" | "billing">("resume");
 
   const fetchResumes = async () => {
     try {
@@ -53,8 +56,7 @@ export function Settings() {
     }
   };
 
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitProfileUpdate = async () => {
     setIsSavingProfile(true);
     setProfileSuccessMsg(null);
     setProfileErrorMsg(null);
@@ -78,6 +80,7 @@ export function Settings() {
         setProfileSuccessMsg("Profile updated successfully!");
         setCurrentPassword("");
         setNewPassword("");
+        signalExtensionSync(); // name/profile changed → refresh the extension in real time
       } else {
         setProfileErrorMsg(data.detail || "Failed to update profile. Try again.");
       }
@@ -89,15 +92,123 @@ export function Settings() {
     }
   };
 
+  const handleUpdateProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitProfileUpdate();
+  };
+
+  // --- Billing ---
+  const [billingStatus, setBillingStatus] = useState<{ plan: string; subscriptionStatus: string | null; currentPeriodEnd: number | null } | null>(null);
+  const [isBillingLoading, setIsBillingLoading] = useState(true);
+  const [billingActionPlan, setBillingActionPlan] = useState<string | null>(null);
+  const [billingError, setBillingError] = useState<string | null>(null);
+  // Captured once at mount rather than read live from searchParams — mirrors
+  // Builder.tsx's handling of `?resumeId=`, so clearing the param below
+  // doesn't itself flip this back to false on the next render.
+  const [showCheckoutSuccess] = useState(() => searchParams.get("checkout") === "success");
+
+  const fetchBillingStatus = async () => {
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/billing/status`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (response.ok) {
+        setBillingStatus(await response.json());
+      }
+    } catch (e) {
+      console.error("Failed to fetch billing status:", e);
+    } finally {
+      setIsBillingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showCheckoutSuccess) return;
+    setActiveTab("billing");
+    setSearchParams({}, { replace: true });
+  }, [showCheckoutSuccess, setSearchParams]);
+
+  const startCheckout = async (plan: "pro" | "premium") => {
+    setBillingError(null);
+    setBillingActionPlan(plan);
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/billing/create-checkout-session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ plan })
+      });
+      if (response.ok) {
+        const result = await response.json();
+        window.location.href = result.url;
+        return;
+      }
+      let errorMsg = "Couldn't start checkout. Please try again.";
+      try {
+        const body = await response.clone().json();
+        if (body?.detail) errorMsg = body.detail;
+      } catch {
+        // ignore
+      }
+      setBillingError(errorMsg);
+    } catch (e) {
+      console.error("Failed to start checkout:", e);
+      setBillingError("We couldn't reach the billing service. Check your connection and try again.");
+    } finally {
+      setBillingActionPlan(null);
+    }
+  };
+
+  const openBillingPortal = async () => {
+    setBillingError(null);
+    setBillingActionPlan("portal");
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/billing/create-portal-session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        window.location.href = result.url;
+        return;
+      }
+      let errorMsg = "Couldn't open the billing portal. Please try again.";
+      try {
+        const body = await response.clone().json();
+        if (body?.detail) errorMsg = body.detail;
+      } catch {
+        // ignore
+      }
+      setBillingError(errorMsg);
+    } catch (e) {
+      console.error("Failed to open billing portal:", e);
+      setBillingError("We couldn't reach the billing service. Check your connection and try again.");
+    } finally {
+      setBillingActionPlan(null);
+    }
+  };
+
   useEffect(() => {
     fetchResumes();
     fetchUserProfile();
+    fetchBillingStatus();
   }, []);
 
   const handleSetDefault = async (resumeId: string) => {
     if (savingId) return;
     setSavingId(resumeId);
     setError(null);
+    // Tell the extension immediately (before the request) so it shows
+    // "Switching…" the instant you click, then polls for the new resume.
+    signalExtensionResumeSwitch();
     try {
       const token = localStorage.getItem("jobplotter_token");
       const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/set-default`, {
@@ -155,6 +266,16 @@ export function Settings() {
           }`}
         >
           Profile
+        </button>
+        <button
+          onClick={() => setActiveTab("billing")}
+          className={`flex-grow py-2.5 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer ${
+            activeTab === "billing"
+              ? "bg-white text-indigo-600 shadow-sm font-extrabold"
+              : "text-slate-500 hover:text-slate-900 hover:bg-white/40"
+          }`}
+        >
+          Billing
         </button>
       </div>
 
@@ -347,6 +468,83 @@ export function Settings() {
               </button>
             </div>
           </form>
+        )}
+      </section>
+      )}
+
+      {activeTab === "billing" && (
+        <section className="bg-white border border-slate-100 rounded-2xl p-5 sm:p-6 shadow-sm animate-in fade-in duration-300">
+        <div className="mb-5 flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+            <CreditCard className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-900 font-sans">Billing</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Manage your plan and payment details.</p>
+          </div>
+        </div>
+
+        {showCheckoutSuccess && (
+          <div className="mb-4 px-3.5 py-2.5 rounded-xl bg-green-50 border border-green-100 text-xs font-bold text-green-700 animate-in fade-in duration-300">
+            You're all set! Your subscription is now active.
+          </div>
+        )}
+        {billingError && (
+          <div className="mb-4 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-100 text-xs font-bold text-red-700 animate-in fade-in duration-300">
+            {billingError}
+          </div>
+        )}
+
+        {isBillingLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+              <div>
+                <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Current Plan</p>
+                <p className="text-lg font-bold text-slate-900 capitalize">{billingStatus?.plan || "Free"}</p>
+                {billingStatus?.subscriptionStatus && billingStatus.plan !== "free" && (
+                  <p className="text-[11px] text-slate-500 mt-0.5 capitalize">
+                    {billingStatus.subscriptionStatus}
+                    {billingStatus.currentPeriodEnd ? ` · renews ${new Date(billingStatus.currentPeriodEnd).toLocaleDateString()}` : ""}
+                  </p>
+                )}
+              </div>
+              {billingStatus?.plan && billingStatus.plan !== "free" && (
+                <button
+                  onClick={openBillingPortal}
+                  disabled={billingActionPlan === "portal"}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {billingActionPlan === "portal" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Manage Billing
+                </button>
+              )}
+            </div>
+
+            {(!billingStatus?.plan || billingStatus.plan === "free") && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  onClick={() => startCheckout("pro")}
+                  disabled={!!billingActionPlan}
+                  className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {billingActionPlan === "pro" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Upgrade to Pro — $12/mo
+                </button>
+                <button
+                  onClick={() => startCheckout("premium")}
+                  disabled={!!billingActionPlan}
+                  className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold rounded-xl bg-white border border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {billingActionPlan === "premium" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Upgrade to Premium — $29/mo
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </section>
       )}

@@ -83,9 +83,11 @@ export function ResumePdfPreview({ data, templateId, onTemplateChange, showPicke
           />
         )}
         {(loading || !url) && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-100/70 backdrop-blur-[1px]">
-            <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
-            <span className="text-xs font-semibold text-slate-500">Rendering preview…</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/85 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-2 px-4 py-3 rounded-xl bg-white shadow-md border border-slate-200">
+              <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
+              <span className="text-xs font-semibold text-slate-600">Generating preview…</span>
+            </div>
           </div>
         )}
         {error && (

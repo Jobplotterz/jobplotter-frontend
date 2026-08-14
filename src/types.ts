@@ -1,5 +1,6 @@
-import { useEffect, useState, type Dispatch, type SetStateAction, useCallback } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction, useCallback, useRef } from "react";
 import { useAuth } from "./contexts/AuthContext";
+import { signalExtensionSync } from "./lib/extensionSync";
 
 export interface ResumeData {
   personalInfo: {
@@ -49,6 +50,21 @@ export const initialResumeData: ResumeData = {
   education: [],
   certifications: [],
   skills: [],
+};
+
+// A resume's `data` field can be corrupted (legacy schema, truncated write) —
+// an unguarded JSON.parse there throws inside an async load path with no
+// surrounding try/catch, which stalls `isInitialLoad` forever and leaves the
+// Builder page stuck. Parse defensively and fall back to extractedData/blank.
+const safeParseResumeData = (raw: unknown, extractedData?: unknown): ResumeData | null => {
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      console.error("Corrupted resume data, falling back", e);
+    }
+  }
+  return (extractedData as ResumeData) || null;
 };
 
 const getResumeCacheKey = (userId: string, id: string) => `jobplotter_${userId}_resume_${id}`;
@@ -135,11 +151,8 @@ export function useResumeData(initialId?: string | null): [ResumeData, Dispatch<
       setReview(cached.review || null);
       setLastReviewedHash(cached.lastReviewedData || null);
       setNeedsAnalysis(!!cached.needsAnalysis);
-      if (cached.data) {
-        setData(JSON.parse(cached.data));
-      } else if (cached.extractedData) {
-        setData(cached.extractedData);
-      }
+      const parsed = safeParseResumeData(cached.data, cached.extractedData);
+      if (parsed) setData(parsed);
       return;
     }
 
@@ -161,11 +174,8 @@ export function useResumeData(initialId?: string | null): [ResumeData, Dispatch<
         setReview(resume.review || null);
         setLastReviewedHash(resume.lastReviewedData || null);
         setNeedsAnalysis(!!resume.needsAnalysis);
-        if (resume.data) {
-          setData(JSON.parse(resume.data));
-        } else if (resume.extractedData) {
-          setData(resume.extractedData);
-        }
+        const parsed = safeParseResumeData(resume.data, resume.extractedData);
+        if (parsed) setData(parsed);
         // Save to cache for next time
         saveResumeToCache(userId, id, resume);
       }
@@ -199,11 +209,8 @@ export function useResumeData(initialId?: string | null): [ResumeData, Dispatch<
         setReview(defaultResume.review || null);
         setLastReviewedHash(defaultResume.lastReviewedData || null);
         setNeedsAnalysis(!!defaultResume.needsAnalysis);
-        if (defaultResume.data) {
-          setData(JSON.parse(defaultResume.data));
-        } else if (defaultResume.extractedData) {
-          setData(defaultResume.extractedData);
-        }
+        const parsedDefault = safeParseResumeData(defaultResume.data, defaultResume.extractedData);
+        if (parsedDefault) setData(parsedDefault);
         saveResumeToCache(userId, rid, defaultResume);
         setIsInitialLoad(false);
         return;
@@ -226,17 +233,19 @@ export function useResumeData(initialId?: string | null): [ResumeData, Dispatch<
         setReview(latest.review || null);
         setLastReviewedHash(latest.lastReviewedData || null);
         setNeedsAnalysis(!!latest.needsAnalysis);
-        if (latest.data) {
-          setData(JSON.parse(latest.data));
-        } else if (latest.extractedData) {
-          setData(latest.extractedData);
-        }
+        const parsedLatest = safeParseResumeData(latest.data, latest.extractedData);
+        if (parsedLatest) setData(parsedLatest);
         saveResumeToCache(userId, rid, latest);
       }
       setIsInitialLoad(false);
     };
 
-    init();
+    // Guard against any unforeseen throw leaving isInitialLoad stuck true
+    // forever (which would silently disable autosave and strand the page).
+    init().catch(e => {
+      console.error("Failed to initialize resume data", e);
+      setIsInitialLoad(false);
+    });
   }, [fetchResumes, initialId, storedId, userId, activeResumeKey]);
 
   // Save to FastAPI backend
@@ -279,6 +288,7 @@ export function useResumeData(initialId?: string | null): [ResumeData, Dispatch<
         }
 
         fetchResumes();
+        signalExtensionSync(); // let the extension pick up the edited resume in real time
       }
     } catch (e) {
       console.error("Failed to save resume", e);
@@ -287,18 +297,46 @@ export function useResumeData(initialId?: string | null): [ResumeData, Dispatch<
     }
   }, [resumeId, fetchResumes, userId, title, review, lastReviewedHash, needsAnalysis]);
 
-  // Debounced save to backend
+  // Debounced save to backend. `pendingSaveRef` tracks an edit that's waiting
+  // out the debounce window so the unmount-flush effect below can save it
+  // immediately if the user navigates away before the timer fires (e.g.
+  // clicking to Dashboard right after typing) — otherwise that edit is
+  // silently dropped and stale data reappears in previews elsewhere.
+  const pendingSaveRef = useRef<{ data: ResumeData; title: string } | null>(null);
   useEffect(() => {
     if (isInitialLoad || userId === "guest") return;
 
+    if (JSON.stringify(data) === JSON.stringify(initialResumeData)) {
+      pendingSaveRef.current = null;
+      return;
+    }
+
+    pendingSaveRef.current = { data, title };
     const timer = setTimeout(() => {
-      if (JSON.stringify(data) !== JSON.stringify(initialResumeData)) {
-        saveToBackend(data, title);
-      }
+      pendingSaveRef.current = null;
+      saveToBackend(data, title);
     }, 2000);
 
     return () => clearTimeout(timer);
   }, [data, title, saveToBackend, isInitialLoad, userId]);
+
+  // Always call the freshest saveToBackend on flush — it's identity changes
+  // as resumeId gets assigned, and the unmount effect below intentionally
+  // only runs its cleanup once, so it must not close over a stale (e.g.
+  // pre-assigned-id) version and risk creating a duplicate resume.
+  const saveToBackendRef = useRef(saveToBackend);
+  useEffect(() => { saveToBackendRef.current = saveToBackend; }, [saveToBackend]);
+
+  // Flush any still-pending debounced save when the component using this
+  // hook unmounts, so navigating away right after an edit doesn't drop it.
+  useEffect(() => {
+    return () => {
+      if (pendingSaveRef.current) {
+        saveToBackendRef.current(pendingSaveRef.current.data, pendingSaveRef.current.title);
+        pendingSaveRef.current = null;
+      }
+    };
+  }, []);
 
   // Immediate sync to localStorage whenever data or title changes
   useEffect(() => {

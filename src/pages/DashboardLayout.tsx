@@ -55,7 +55,6 @@ export function DashboardLayout() {
       </div>
 
       <div className="flex-1 overflow-y-auto py-3 px-3">
-        <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Menu</p>
         <nav className="space-y-1">
           {navigation.map((item) => {
             const active = isActive(item.href);
