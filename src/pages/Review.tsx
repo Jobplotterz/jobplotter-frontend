@@ -948,7 +948,7 @@ export function Review() {
                 </div>
 
                 {/* Detailed Feedback Accordion */}
-                <Accordion type="multiple" defaultValue={["content"]} className="w-full space-y-3">
+                <Accordion defaultValue={["content"]} className="w-full space-y-3">
                   {review?.detailedFeedback && Object.entries(review.detailedFeedback).map(([category, feedback]: [string, any]) => (
                     <AccordionItem key={category} value={category} className="border border-slate-200 rounded-xl px-3 bg-white shadow-sm overflow-hidden">
                       <AccordionTrigger className="py-4 hover:no-underline">

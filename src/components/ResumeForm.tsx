@@ -243,7 +243,7 @@ export function ResumeForm({ data, onChange }: ResumeFormProps) {
         </div>
       )}
 
-      <Accordion type="multiple" defaultValue={["personal", "experience", "education", "skills"]} className="w-full space-y-3">
+      <Accordion defaultValue={["personal", "experience", "education", "skills"]} className="w-full space-y-3">
 
         {/* Personal Info */}
         <AccordionItem value="personal" className="border border-slate-200 rounded-xl px-4 bg-white">

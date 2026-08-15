@@ -25,24 +25,27 @@ export function Navbar() {
         </Link>
 
         {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-8 ml-8">
-          <Link to="/pricing" className="text-[14px] font-medium text-slate-600 hover:text-indigo-600 transition-colors">Pricing</Link>
-          <Link to="/features" className="text-[14px] font-medium text-slate-600 hover:text-indigo-600 transition-colors">Features</Link>
+        <div className="hidden md:flex items-center gap-7 ml-8">
+          <Link to="/features" className="font-departure text-[13px] text-slate-600 hover:text-indigo-600 transition-colors">Features</Link>
+          <Link to="/pricing" className="font-departure text-[13px] text-slate-600 hover:text-indigo-600 transition-colors">Pricing</Link>
+          <Link to="/resources" className="font-departure text-[13px] text-slate-600 hover:text-indigo-600 transition-colors">Resources</Link>
+          <Link to="/about" className="font-departure text-[13px] text-slate-600 hover:text-indigo-600 transition-colors">About</Link>
+          <Link to="/contact" className="font-departure text-[13px] text-slate-600 hover:text-indigo-600 transition-colors">Contact</Link>
         </div>
 
         {/* Desktop Actions */}
         <div className="hidden md:flex items-center gap-4 ml-auto">
           {isAuthenticated ? (
-            <Link to="/dashboard" className="flex items-center gap-2 px-6 py-2.5 text-[14px] font-semibold text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg">
+            <Link to="/dashboard" className="flex items-center gap-2 px-6 py-2.5 font-departure text-[13px] font-bold text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg">
               <LayoutDashboard className="w-4 h-4" />
               Go to Dashboard
             </Link>
           ) : (
             <div className="flex items-center gap-3">
-              <Link to="/login" className="px-5 py-2.5 text-[14px] font-medium text-slate-700 hover:text-indigo-600 transition-colors">
+              <Link to="/login" className="px-5 py-2.5 font-departure text-[13px] text-slate-700 hover:text-indigo-600 transition-colors">
                 Log in
               </Link>
-              <Link to="/signup" className="px-6 py-2.5 text-[14px] font-semibold text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg">
+              <Link to="/signup" className="px-6 py-2.5 font-departure text-[13px] font-bold text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg">
                 Sign up
               </Link>
             </div>
@@ -53,22 +56,26 @@ export function Navbar() {
       {/* Mobile Menu */}
       {mobileOpen && (
         <div className="md:hidden absolute top-full left-0 right-0 bg-white border-b border-slate-200 shadow-xl z-50 animate-in slide-in-from-top duration-200">
-          <div className="flex flex-col px-6 py-6 space-y-4">
-            <Link to="/pricing" onClick={() => setMobileOpen(false)} className="text-base font-semibold text-slate-900 py-2">Pricing</Link>
-            <Link to="/features" onClick={() => setMobileOpen(false)} className="text-base font-semibold text-slate-900 py-2">Features</Link>
-            
+          <div className="flex flex-col px-6 py-6 space-y-2">
+            <Link to="/features" onClick={() => setMobileOpen(false)} className="font-departure text-[15px] text-slate-900 py-2">Features</Link>
+            <Link to="/pricing" onClick={() => setMobileOpen(false)} className="font-departure text-[15px] text-slate-900 py-2">Pricing</Link>
+            <Link to="/resources" onClick={() => setMobileOpen(false)} className="font-departure text-[15px] text-slate-900 py-2">Resources</Link>
+            <Link to="/about" onClick={() => setMobileOpen(false)} className="font-departure text-[15px] text-slate-900 py-2">About</Link>
+            <Link to="/contact" onClick={() => setMobileOpen(false)} className="font-departure text-[15px] text-slate-900 py-2">Contact</Link>
+            <Link to="/help" onClick={() => setMobileOpen(false)} className="font-departure text-[15px] text-slate-900 py-2">Help Center</Link>
+
             <div className="pt-6 border-t border-slate-100 flex flex-col gap-3">
               {isAuthenticated ? (
-                <Link to="/dashboard" onClick={() => setMobileOpen(false)} className="flex items-center justify-center gap-2 w-full px-6 py-3 text-base font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg">
+                <Link to="/dashboard" onClick={() => setMobileOpen(false)} className="flex items-center justify-center gap-2 w-full px-6 py-3 font-departure text-[15px] font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg">
                   <LayoutDashboard className="w-5 h-5" />
                   Go to Dashboard
                 </Link>
               ) : (
                 <>
-                  <Link to="/login" onClick={() => setMobileOpen(false)} className="w-full text-center px-6 py-3 text-base font-bold text-slate-900 bg-slate-100 rounded-xl hover:bg-slate-200">
+                  <Link to="/login" onClick={() => setMobileOpen(false)} className="w-full text-center px-6 py-3 font-departure text-[15px] font-bold text-slate-900 bg-slate-100 rounded-xl hover:bg-slate-200">
                     Log in
                   </Link>
-                  <Link to="/signup" onClick={() => setMobileOpen(false)} className="w-full text-center px-6 py-3 text-base font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg">
+                  <Link to="/signup" onClick={() => setMobileOpen(false)} className="w-full text-center px-6 py-3 font-departure text-[15px] font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg">
                     Sign up
                   </Link>
                 </>

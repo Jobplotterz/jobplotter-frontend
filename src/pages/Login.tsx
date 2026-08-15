@@ -2,6 +2,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { BackToHome } from "../components/BackToHome";
 
 export default function Login() {
   const { isAuthenticated, isLoading, loginWithGoogle, handleGoogleCallback, login } = useAuth();
@@ -76,7 +77,8 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="relative min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+      <BackToHome />
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-slate-100">
         <div>
           <Link to="/" className="mx-auto w-12 h-12 flex items-center justify-center mb-6 cursor-pointer">

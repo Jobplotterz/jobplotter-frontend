@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { BackToHome } from "../components/BackToHome";
 
 export default function ResetPassword() {
   const { resetPassword } = useAuth();
@@ -42,7 +43,8 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <div className="relative min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <BackToHome />
         <div className="max-w-md w-full bg-white p-10 rounded-2xl shadow-xl border border-slate-100 text-center">
           <h2 className="text-2xl font-bold text-slate-900 mb-4">Invalid Reset Link</h2>
           <p className="text-slate-500 mb-6">This password reset link is invalid or has expired.</p>
@@ -55,7 +57,8 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="relative min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+      <BackToHome />
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-slate-100">
         <div className="text-center">
           <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">

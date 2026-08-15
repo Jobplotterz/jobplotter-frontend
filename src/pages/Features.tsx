@@ -123,28 +123,25 @@ export default function Features() {
             </div>
             <div className="relative">
               <div className="absolute -inset-4 bg-indigo-500/20 blur-3xl rounded-full opacity-50" />
-              <div className="relative bg-slate-800 border border-slate-700 rounded-2xl p-8 shadow-2xl">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500/50" />
-                    <div className="w-3 h-3 rounded-full bg-yellow-500/50" />
-                    <div className="w-3 h-3 rounded-full bg-green-500/50" />
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-mono tracking-widest uppercase">Matching Engine v2.4</div>
+              <div className="relative rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
+                <img
+                  src="https://images.unsplash.com/photo-1699885960867-56d5f5262d38?auto=format&fit=crop&w=1200&q=70"
+                  alt="Close-up of code on a dark screen"
+                  loading="lazy"
+                  className="w-full h-full object-cover aspect-[4/3]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent" />
+                <div className="absolute top-4 right-4 font-departure text-[10px] text-indigo-200 bg-slate-900/70 backdrop-blur-sm border border-indigo-400/30 px-3 py-1.5 rounded-full tracking-widest uppercase">
+                  Matching Engine v2.4
                 </div>
-                <div className="space-y-6">
-                  <div className="h-4 bg-slate-700/50 rounded-full w-3/4 animate-pulse" />
-                  <div className="h-4 bg-slate-700/50 rounded-full w-full animate-pulse delay-75" />
-                  <div className="h-4 bg-indigo-500/40 rounded-full w-1/2 animate-pulse delay-150" />
-                  <div className="grid grid-cols-2 gap-4 mt-8">
-                    <div className="h-20 bg-slate-700/30 rounded-xl border border-slate-600/50 flex flex-col items-center justify-center">
-                      <div className="text-indigo-400 font-bold text-xl">98%</div>
-                      <div className="text-[9px] text-slate-500">Precision</div>
-                    </div>
-                    <div className="h-20 bg-slate-700/30 rounded-xl border border-slate-600/50 flex flex-col items-center justify-center">
-                      <div className="text-green-400 font-bold text-xl">0.4s</div>
-                      <div className="text-[9px] text-slate-500">Match Speed</div>
-                    </div>
+                <div className="absolute bottom-4 left-4 flex gap-3">
+                  <div className="bg-slate-900/70 backdrop-blur-sm border border-slate-600/50 rounded-xl px-4 py-2.5 text-center">
+                    <div className="text-indigo-400 font-bold text-lg leading-none">98%</div>
+                    <div className="text-[9px] text-slate-400 mt-1">Precision</div>
+                  </div>
+                  <div className="bg-slate-900/70 backdrop-blur-sm border border-slate-600/50 rounded-xl px-4 py-2.5 text-center">
+                    <div className="text-green-400 font-bold text-lg leading-none">0.4s</div>
+                    <div className="text-[9px] text-slate-400 mt-1">Match Speed</div>
                   </div>
                 </div>
               </div>
