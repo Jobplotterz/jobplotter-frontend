@@ -15,11 +15,11 @@ const faqSections = [
       },
       {
         q: "How do I get started?",
-        a: "Create a free account, then either upload an existing resume or build one from scratch in the Resume Builder. Once your profile has a resume, the Jobs page scores openings against your experience so you can prioritize the best-fit matches."
+        a: "Create an account and start your 7-day free trial on the Basic plan, then either upload an existing resume or build one from scratch in the Resume Builder. Once your profile has a resume, the Jobs page scores openings against your experience so you can prioritize the best-fit matches."
       },
       {
-        q: "Is Jobplotter free to use?",
-        a: "Yes — the Free plan includes a resume, job search and browsing, AI matching with match scores, and a basic application tracker. Pro and Premium unlock unlimited resumes, more AI actions per day, and advanced tools. See the Pricing page for a full comparison."
+        q: "How much does Jobplotter cost?",
+        a: "Every plan starts with a 7-day free trial on Basic ($5/mo), which includes resume building, AI review and matching, and application tracking. Pro ($12/mo) adds unlimited resumes, more daily AI actions, extension autofill, and DOCX export; Premium ($29/mo) raises the daily AI limit further. See the Pricing page for a full comparison."
       }
     ]
   },
@@ -38,7 +38,7 @@ const faqSections = [
       },
       {
         q: "Can I export my resume as a PDF?",
-        a: "Yes. Every plan can export to PDF; Free plan exports include a small watermark, while Pro and Premium exports are watermark-free."
+        a: "Yes — every plan exports clean PDFs with no watermark. DOCX export is available on the Pro and Premium plans."
       },
       {
         q: "What is the AI Co-Builder?",

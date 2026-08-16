@@ -129,7 +129,7 @@ export function Settings() {
     setSearchParams({}, { replace: true });
   }, [showCheckoutSuccess, setSearchParams]);
 
-  const startCheckout = async (plan: "pro" | "premium") => {
+  const startCheckout = async (plan: "basic" | "pro" | "premium") => {
     setBillingError(null);
     setBillingActionPlan(plan);
     try {
@@ -504,7 +504,7 @@ export function Settings() {
             <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-slate-100 bg-slate-50/50">
               <div>
                 <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Current Plan</p>
-                <p className="text-lg font-bold text-slate-900 capitalize">{billingStatus?.plan || "Free"}</p>
+                <p className="text-lg font-bold text-slate-900 capitalize">{billingStatus?.plan && billingStatus.plan !== "free" ? billingStatus.plan : "No active plan"}</p>
                 {billingStatus?.subscriptionStatus && billingStatus.plan !== "free" && (
                   <p className="text-[11px] text-slate-500 mt-0.5 capitalize">
                     {billingStatus.subscriptionStatus}
@@ -525,14 +525,22 @@ export function Settings() {
             </div>
 
             {(!billingStatus?.plan || billingStatus.plan === "free") && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
-                  onClick={() => startCheckout("pro")}
+                  onClick={() => startCheckout("basic")}
                   disabled={!!billingActionPlan}
                   className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
+                  {billingActionPlan === "basic" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Start Basic trial — $5/mo
+                </button>
+                <button
+                  onClick={() => startCheckout("pro")}
+                  disabled={!!billingActionPlan}
+                  className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold rounded-xl bg-white border border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
                   {billingActionPlan === "pro" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                  Upgrade to Pro — $12/mo
+                  Pro — $12/mo
                 </button>
                 <button
                   onClick={() => startCheckout("premium")}
@@ -540,7 +548,7 @@ export function Settings() {
                   className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold rounded-xl bg-white border border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {billingActionPlan === "premium" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                  Upgrade to Premium — $29/mo
+                  Premium — $29/mo
                 </button>
               </div>
             )}

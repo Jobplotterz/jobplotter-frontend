@@ -181,11 +181,11 @@ export default function Features() {
             Ready to plot your next career move?
           </h2>
           <p className="text-slate-500 mb-10 text-lg">
-            Build an ATS-ready resume, see how you match real roles, and track every application — free to start, no credit card required.
+            Build an ATS-ready resume, see how you match real roles, and track every application — start with a 7-day free trial.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/signup" className="px-8 py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 hover:-translate-y-1">
-              Get Started Free
+              Start Free Trial
             </Link>
             <Link to="/pricing" className="px-8 py-4 bg-white text-slate-900 font-bold rounded-xl border border-slate-200 hover:border-slate-300 transition-all hover:bg-slate-50">
               View Pricing

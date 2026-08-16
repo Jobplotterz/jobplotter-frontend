@@ -7,48 +7,47 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const plans = [
   {
-    id: "free",
-    name: "Free",
-    description: "Start your search and build your first resume — no credit card needed.",
-    price: "$0",
-    period: "/forever",
-    buttonText: "Get Started",
+    id: "basic",
+    name: "Basic",
+    badge: "7-DAY FREE TRIAL",
+    description: "Everything you need to build a resume and start matching — try it free for 7 days.",
+    price: "$5",
+    period: "/month",
+    buttonText: "Start 7-Day Free Trial",
     buttonClass: "bg-slate-50 text-slate-900 hover:bg-slate-100",
     popular: false,
     features: [
-      "1 active resume",
-      "Basic templates",
-      "3 AI resume actions/day",
-      "Unlimited job search & browsing",
-      "AI job matching & match scores",
-      "Save up to 10 jobs",
-      "Application tracker (up to 5 active)",
-      "PDF export (with watermark)",
-      "Browser extension — save jobs & view match scores",
-      "Community support"
+      "Up to 3 resumes",
+      "All resume templates",
+      "15 AI resume actions/day",
+      "AI resume review, optimize & tailor-for-job",
+      "AI Co-Builder (build a resume from a description)",
+      "Unlimited job search & AI match scores",
+      "Save up to 50 jobs",
+      "Application tracker (up to 25 active)",
+      "PDF export",
+      "Browser extension — save jobs & match scores",
+      "Email support"
     ]
   },
   {
     id: "pro",
     name: "Pro",
     badge: "MOST POPULAR",
-    description: "Everything a serious job seeker needs to build, tailor, and track applications.",
+    description: "For serious job seekers who want unlimited room and the full extension.",
     price: "$12",
     period: "/month",
-    buttonText: "Start 7-Day Free Trial",
+    buttonText: "Upgrade to Pro",
     buttonClass: "bg-white text-indigo-600 hover:bg-slate-50",
     popular: true,
     features: [
+      "Everything in Basic, plus:",
       "Unlimited resumes",
-      "All resume templates",
-      "30 AI resume actions/day",
-      "AI resume review, optimize & tailor-for-job",
-      "AI Co-Builder (build a resume from a description)",
-      "Unlimited AI job matching & match scores",
+      "40 AI resume actions/day",
+      "Browser extension with autofill",
+      "DOCX export",
       "Unlimited saved jobs",
       "Unlimited application tracker",
-      "PDF export, no watermark",
-      "Browser extension with autofill",
       "Priority email support"
     ]
   },
@@ -62,28 +61,28 @@ const plans = [
     buttonClass: "bg-indigo-600 text-white hover:bg-indigo-700",
     popular: false,
     features: [
-      "Everything in Pro",
-      "100 AI resume actions/day",
+      "Everything in Pro, plus:",
+      "120 AI resume actions/day",
       "Priority AI queue during high-demand periods",
-      "Priority email support"
+      "Priority support"
     ]
   }
 ];
 
 const comparisonFeatures = [
-  { name: "Active Resumes", starter: "1", growth: "Unlimited", enterprise: "Unlimited" },
-  { name: "Resume Templates", starter: "Basic", growth: "All Templates", enterprise: "All Templates" },
-  { name: "AI Resume Actions/Day", starter: "3", growth: "30", enterprise: "100" },
-  { name: "AI Resume Review, Optimize & Tailor-for-Job", starter: false, growth: true, enterprise: true },
-  { name: "AI Co-Builder", starter: false, growth: true, enterprise: true },
+  { name: "Active Resumes", starter: "Up to 3", growth: "Unlimited", enterprise: "Unlimited" },
+  { name: "Resume Templates", starter: "All Templates", growth: "All Templates", enterprise: "All Templates" },
+  { name: "AI Resume Actions/Day", starter: "15", growth: "40", enterprise: "120" },
+  { name: "AI Resume Review, Optimize & Tailor-for-Job", starter: true, growth: true, enterprise: true },
+  { name: "AI Co-Builder", starter: true, growth: true, enterprise: true },
   { name: "AI Job Matching & Match Scores", starter: "Unlimited", growth: "Unlimited", enterprise: "Unlimited" },
   { name: "Job Search & Browsing", starter: "Unlimited", growth: "Unlimited", enterprise: "Unlimited" },
-  { name: "Saved Jobs", starter: "10", growth: "Unlimited", enterprise: "Unlimited" },
-  { name: "Application Tracker", starter: "Up to 5", growth: "Unlimited", enterprise: "Unlimited" },
-  { name: "Export Formats", starter: "PDF (watermarked)", growth: "PDF, no watermark", enterprise: "PDF, no watermark" },
+  { name: "Saved Jobs", starter: "Up to 50", growth: "Unlimited", enterprise: "Unlimited" },
+  { name: "Application Tracker", starter: "Up to 25", growth: "Unlimited", enterprise: "Unlimited" },
   { name: "Browser Extension", starter: "Save & match scores", growth: "Full autofill", enterprise: "Full autofill" },
+  { name: "DOCX Export", starter: false, growth: true, enterprise: true },
   { name: "Priority AI Queue", starter: false, growth: false, enterprise: true },
-  { name: "Support", starter: "Community", growth: "Priority Email", enterprise: "Priority Email" }
+  { name: "Support", starter: "Email", growth: "Priority Email", enterprise: "Priority Email" }
 ];
 
 export function Pricing() {
@@ -95,10 +94,6 @@ export function Pricing() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const handlePlanClick = async (planId: string) => {
-    if (planId === "free") {
-      navigate(isAuthenticated ? "/dashboard" : "/signup");
-      return;
-    }
     if (!isAuthenticated) {
       // No way to check out before an account exists.
       navigate("/signup");
@@ -156,7 +151,7 @@ export function Pricing() {
           Plans built for your next career.
         </h1>
         <p className="text-sm sm:text-base text-slate-500 leading-relaxed max-w-xl mx-auto">
-          Choose the plan that fits where you are in your job search — from first application to final offer. Start free, upgrade anytime, cancel whenever.
+          Choose the plan that fits where you are in your job search — from first application to final offer. Start with a 7-day free trial, upgrade anytime, cancel whenever.
         </p>
         {checkoutCancelled && (
           <p className="mt-5 text-[13px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 inline-block">
@@ -183,7 +178,7 @@ export function Pricing() {
                 <div className="flex justify-center items-center gap-2 mb-3">
                   <h3 className="text-lg font-bold">{plan.name}</h3>
                   {plan.badge && (
-                    <span className="px-2 py-0.5 text-[9px] font-bold tracking-wider uppercase bg-white/20 text-white rounded-full">
+                    <span className={`px-2 py-0.5 text-[9px] font-bold tracking-wider uppercase rounded-full ${plan.popular ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-600'}`}>
                       {plan.badge}
                     </span>
                   )}
@@ -246,9 +241,13 @@ export function Pricing() {
                   <span className="text-base font-bold text-slate-900">Features</span>
                 </th>
                 <th className="w-1/4 p-5 border-b border-slate-200 text-center">
-                  <div className="text-sm font-bold text-slate-900 mb-3">Free</div>
-                  <button onClick={() => handlePlanClick("free")} className="px-5 py-1.5 text-xs font-semibold bg-slate-50 text-slate-900 rounded-full hover:bg-slate-100 transition-colors cursor-pointer">
-                    Get Started
+                  <div className="text-sm font-bold text-slate-900 mb-3">Basic</div>
+                  <button
+                    onClick={() => handlePlanClick("basic")}
+                    disabled={loadingPlan === "basic"}
+                    className="px-5 py-1.5 text-xs font-semibold bg-slate-50 text-slate-900 rounded-full hover:bg-slate-100 transition-colors disabled:opacity-70 cursor-pointer"
+                  >
+                    {loadingPlan === "basic" ? "Starting..." : "Start Free Trial"}
                   </button>
                 </th>
                 <th className="w-1/4 p-5 border-b border-slate-200 text-center bg-indigo-50/30">
@@ -258,7 +257,7 @@ export function Pricing() {
                     disabled={loadingPlan === "pro"}
                     className="px-5 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors disabled:opacity-70 cursor-pointer"
                   >
-                    {loadingPlan === "pro" ? "Starting..." : "Start Free Trial"}
+                    {loadingPlan === "pro" ? "Starting..." : "Upgrade"}
                   </button>
                 </th>
                 <th className="w-1/4 p-5 border-b border-slate-200 text-center">
@@ -302,12 +301,12 @@ export function Pricing() {
 
         {/* Mobile comparison: stacked cards */}
         <div className="md:hidden space-y-6">
-          {["Free", "Pro", "Premium"].map((planName) => (
+          {["Basic", "Pro", "Premium"].map((planName) => (
             <div key={planName} className={`rounded-xl border p-5 ${planName === "Pro" ? "border-indigo-200 bg-indigo-50/20" : "border-slate-200 bg-white"}`}>
               <h3 className="font-bold text-base text-slate-900 mb-4">{planName}</h3>
               <div className="space-y-3">
                 {comparisonFeatures.map((feature, index) => {
-                  const value = planName === "Free" ? feature.starter : planName === "Pro" ? feature.growth : feature.enterprise;
+                  const value = planName === "Basic" ? feature.starter : planName === "Pro" ? feature.growth : feature.enterprise;
                   return (
                     <div key={index} className="flex justify-between items-center py-1.5 border-b border-slate-100 last:border-0">
                       <span className="text-[13px] font-medium text-slate-700">{feature.name}</span>

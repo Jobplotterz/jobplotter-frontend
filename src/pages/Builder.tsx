@@ -123,8 +123,10 @@ export function Builder() {
     }
   };
 
+  const canExportDocx = userPlan === "pro" || userPlan === "premium";
+
   const handleDownloadDocx = async () => {
-    if (userPlan === "free" || isDownloadingDocx) return;
+    if (!canExportDocx || isDownloadingDocx) return;
 
     const filename = `${resumeData.personalInfo.fullName || 'resume'}.docx`;
     const isIOS = isIOSDevice();
@@ -276,7 +278,7 @@ export function Builder() {
                 <FileText className="w-3.5 h-3.5 text-slate-500" />
                 <span className="text-sm font-bold text-slate-700">Download PDF</span>
               </DropdownMenuItem>
-              {userPlan === "free" ? (
+              {!canExportDocx ? (
                 <Link
                   to="/pricing"
                   className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:bg-slate-50"

@@ -294,7 +294,7 @@ export default function Resources() {
             to="/signup"
             className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 hover:-translate-y-1"
           >
-            Get Started Free <ArrowRight className="w-4 h-4" />
+            Start Free Trial <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
       </section>

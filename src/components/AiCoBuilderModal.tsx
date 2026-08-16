@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { X, Loader2, Sparkles, ArrowLeft, AlertCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { ResumeData, initialResumeData } from "../types";
+import { ResumeData } from "../types";
 
 interface AiCoBuilderModalProps {
   onClose: () => void;
@@ -48,15 +48,55 @@ function authHeaders() {
   };
 }
 
+// The AI doesn't always honor the schema: a bullet-point `description` can come
+// back as an array, `summary` as an array, a skill as an object, a date as a
+// number. The builder/preview then call `.trim()`/`.split()` on those values and
+// crash the whole page ("k.description.trim is not a function"). Coerce every
+// field the UI treats as a string into an actual string before it's applied.
+function str(v: any): string {
+  if (typeof v === "string") return v;
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map(str).filter(Boolean).join("\n");
+  if (typeof v === "object") return str(v.text ?? v.description ?? v.value ?? v.name ?? "");
+  return String(v);
+}
+
 // The AI may emit placeholder ids (e.g. "unique_id_1") that could collide as
 // React keys once merged with the rest of the app's id scheme, so re-stamp them.
 function normalizeResumeData(raw: any): ResumeData {
+  const pi = raw.personalInfo || {};
   return {
-    personalInfo: { ...initialResumeData.personalInfo, ...(raw.personalInfo || {}) },
-    experience: (raw.experience || []).map((exp: any, i: number) => ({ ...exp, id: `${Date.now()}-exp-${i}` })),
-    education: (raw.education || []).map((edu: any, i: number) => ({ ...edu, id: `${Date.now()}-edu-${i}` })),
-    certifications: (raw.certifications || []).map((cert: any, i: number) => ({ ...cert, id: `${Date.now()}-cert-${i}` })),
-    skills: Array.isArray(raw.skills) ? raw.skills : [],
+    personalInfo: {
+      fullName: str(pi.fullName),
+      jobTitle: str(pi.jobTitle),
+      email: str(pi.email),
+      phone: str(pi.phone),
+      location: str(pi.location),
+      website: str(pi.website),
+      summary: str(pi.summary),
+    },
+    experience: (Array.isArray(raw.experience) ? raw.experience : []).map((exp: any, i: number) => ({
+      id: `${Date.now()}-exp-${i}`,
+      company: str(exp?.company),
+      position: str(exp?.position),
+      startDate: str(exp?.startDate),
+      endDate: str(exp?.endDate),
+      description: str(exp?.description),
+    })),
+    education: (Array.isArray(raw.education) ? raw.education : []).map((edu: any, i: number) => ({
+      id: `${Date.now()}-edu-${i}`,
+      institution: str(edu?.institution),
+      degree: str(edu?.degree),
+      startDate: str(edu?.startDate),
+      endDate: str(edu?.endDate),
+    })),
+    certifications: (Array.isArray(raw.certifications) ? raw.certifications : []).map((cert: any, i: number) => ({
+      id: `${Date.now()}-cert-${i}`,
+      name: str(cert?.name),
+      issuer: str(cert?.issuer),
+      date: str(cert?.date),
+    })),
+    skills: (Array.isArray(raw.skills) ? raw.skills : []).map(str).filter(Boolean),
   };
 }
 

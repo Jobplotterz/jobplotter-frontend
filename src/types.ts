@@ -56,15 +56,71 @@ export const initialResumeData: ResumeData = {
 // an unguarded JSON.parse there throws inside an async load path with no
 // surrounding try/catch, which stalls `isInitialLoad` forever and leaves the
 // Builder page stuck. Parse defensively and fall back to extractedData/blank.
+// Coerce any value the UI treats as a string into an actual string. Resume data
+// can carry the wrong shape — a bullet-point `description` saved as an array, a
+// date saved as a number — and the builder/preview then call `.trim()`/`.split()`
+// on it and crash the whole page ("k.description.trim is not a function").
+const toStr = (v: unknown): string => {
+  if (typeof v === "string") return v;
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map(toStr).filter(Boolean).join("\n");
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return toStr(o.text ?? o.description ?? o.value ?? o.name ?? "");
+  }
+  return String(v);
+};
+
+// Guarantee a parsed resume matches ResumeData's field types so no downstream
+// render can blow up on a mis-typed field (e.g. an AI-generated resume that was
+// saved before it was normalized).
+export const sanitizeResumeData = (raw: any): ResumeData => {
+  const pi = raw?.personalInfo || {};
+  return {
+    personalInfo: {
+      fullName: toStr(pi.fullName),
+      jobTitle: toStr(pi.jobTitle),
+      email: toStr(pi.email),
+      phone: toStr(pi.phone),
+      location: toStr(pi.location),
+      website: toStr(pi.website),
+      summary: toStr(pi.summary),
+    },
+    experience: (Array.isArray(raw?.experience) ? raw.experience : []).map((exp: any, i: number) => ({
+      id: exp?.id ? String(exp.id) : `${Date.now()}-exp-${i}`,
+      company: toStr(exp?.company),
+      position: toStr(exp?.position),
+      startDate: toStr(exp?.startDate),
+      endDate: toStr(exp?.endDate),
+      description: toStr(exp?.description),
+    })),
+    education: (Array.isArray(raw?.education) ? raw.education : []).map((edu: any, i: number) => ({
+      id: edu?.id ? String(edu.id) : `${Date.now()}-edu-${i}`,
+      institution: toStr(edu?.institution),
+      degree: toStr(edu?.degree),
+      startDate: toStr(edu?.startDate),
+      endDate: toStr(edu?.endDate),
+    })),
+    certifications: (Array.isArray(raw?.certifications) ? raw.certifications : []).map((cert: any, i: number) => ({
+      id: cert?.id ? String(cert.id) : `${Date.now()}-cert-${i}`,
+      name: toStr(cert?.name),
+      issuer: toStr(cert?.issuer),
+      date: toStr(cert?.date),
+    })),
+    skills: (Array.isArray(raw?.skills) ? raw.skills : []).map(toStr).filter(Boolean),
+  };
+};
+
 const safeParseResumeData = (raw: unknown, extractedData?: unknown): ResumeData | null => {
   if (typeof raw === "string") {
     try {
-      return JSON.parse(raw);
+      return sanitizeResumeData(JSON.parse(raw));
     } catch (e) {
       console.error("Corrupted resume data, falling back", e);
     }
   }
-  return (extractedData as ResumeData) || null;
+  if (raw && typeof raw === "object") return sanitizeResumeData(raw);
+  return extractedData ? sanitizeResumeData(extractedData) : null;
 };
 
 const getResumeCacheKey = (userId: string, id: string) => `jobplotter_${userId}_resume_${id}`;

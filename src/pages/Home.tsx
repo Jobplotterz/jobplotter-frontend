@@ -61,7 +61,7 @@ export function Home() {
             </form>
 
             <p className="mt-4 text-[13px] text-slate-500">
-              Free to start — <span className="font-semibold text-slate-700">no credit card required</span>
+              Start with a <span className="font-semibold text-slate-700">7-day free trial</span> — cancel anytime
             </p>
 
             {/* Stat + feature blurb */}
@@ -224,7 +224,7 @@ export function Home() {
 
           <div className="text-center">
             <Link to="/signup" className="inline-block px-7 py-3.5 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors uppercase tracking-wide text-xs">
-              Get Started Free
+              Start Free Trial
             </Link>
           </div>
         </div>
@@ -303,7 +303,7 @@ export function Home() {
               <AccordionItem value="item-1" className="border-b border-slate-200 py-1">
                 <AccordionTrigger className="text-[15px] font-semibold text-slate-900 hover:no-underline">Can I try Jobplotter for free?</AccordionTrigger>
                 <AccordionContent className="text-slate-500 text-sm leading-relaxed pt-1 pb-2">
-                  Yes — our Free plan is free forever, no credit card required. Want unlimited AI tailoring? Pro includes a 7-day free trial.
+                  Every plan starts with a 7-day free trial on Basic ($5/mo) — build a resume, run AI matching, and track applications before you're charged. Upgrade to Pro or Premium anytime for more.
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="item-2" className="border-b border-slate-200 py-1">
@@ -337,10 +337,10 @@ export function Home() {
             Plot your path to the perfect job with Jobplotter
           </h2>
           <p className="text-sm sm:text-base text-slate-500 mb-8 max-w-lg mx-auto leading-relaxed">
-            Build your resume, get AI-matched to real roles, and track every application — free to start, no credit card required.
+            Build your resume, get AI-matched to real roles, and track every application — start with a 7-day free trial.
           </p>
           <Link to="/signup" className="inline-block px-7 py-3.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
-            Get Started Free
+            Start Free Trial
           </Link>
         </div>
       </section>

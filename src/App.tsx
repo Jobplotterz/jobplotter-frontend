@@ -24,6 +24,7 @@ import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import { DashboardLayout } from "./pages/DashboardLayout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { PaywallGate } from "./components/PaywallGate";
 
 function ScrollToTop() {
   const { pathname, hash } = useLocation();
@@ -111,7 +112,9 @@ export default function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <DashboardLayout />
+              <PaywallGate>
+                <DashboardLayout />
+              </PaywallGate>
             </ProtectedRoute>
           }
         >
@@ -127,7 +130,9 @@ export default function App() {
           path="/dashboard/review"
           element={
             <ProtectedRoute>
-              <Review />
+              <PaywallGate>
+                <Review />
+              </PaywallGate>
             </ProtectedRoute>
           }
         />
