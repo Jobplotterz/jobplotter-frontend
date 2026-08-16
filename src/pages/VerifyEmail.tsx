@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { BackToHome } from "../components/BackToHome";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 // Stop users from spamming the Resend button — every click sends an
@@ -130,7 +131,8 @@ export default function VerifyEmail() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="relative min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+      <BackToHome />
       <div className="max-w-md w-full space-y-8 bg-white p-6 sm:p-10 rounded-2xl shadow-xl border border-slate-100">
         <div className="text-center">
           <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
