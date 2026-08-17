@@ -238,44 +238,43 @@ export function Home() {
               icon: FileText,
               title: "AI Resume Builder",
               desc: "Build from scratch, upload an existing resume, or describe your career and let our AI co-builder draft it for you.",
-              img: "https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?auto=format&fit=crop&w=800&q=60",
-              alt: "Person typing a resume on a laptop"
+              img: "/images/rorschach-resume.png",
+              alt: "Rorschach-style inkblot suggesting a resume document"
             },
             {
               icon: ScanSearch,
               title: "Actionable AI Review",
               desc: "Get an ATS compatibility score plus one-click fixes for every suggestion — no more guessing what to change.",
-              img: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=800&q=60",
-              alt: "Reviewing notes and documents next to a laptop"
+              img: "/images/rorschach-review.png",
+              alt: "Rorschach-style inkblot suggesting a pair of examining lenses"
             },
             {
               icon: Target,
               title: "AI Job Matching",
               desc: "Every job gets a real compatibility score based on your experience, with strengths and gaps explained.",
-              img: "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=800&q=60",
-              alt: "Two people shaking hands over a job offer"
+              img: "/images/rorschach-matching.png",
+              alt: "Rorschach-style inkblot suggesting a target"
             },
             {
               icon: Puzzle,
               title: "Browser Extension",
               desc: "See your match score and auto-fill applications directly on LinkedIn, Indeed, and Upwork.",
-              img: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=800&q=60",
-              alt: "Laptop on a desk with a browser open"
+              img: "/images/rorschach-extension.png",
+              alt: "Rorschach-style inkblot suggesting a puzzle piece"
             },
           ].map(({ icon: Icon, title, desc, img, alt }) => (
             <div
               key={title}
               className="group bg-white rounded-2xl border border-slate-100 overflow-hidden hover:shadow-xl hover:shadow-slate-900/5 hover:-translate-y-1 transition-all duration-300"
             >
-              <div className="relative h-40 overflow-hidden">
+              <div className="relative h-40 overflow-hidden bg-white border-b border-slate-100">
                 <img
                   src={img}
                   alt={alt}
                   loading="lazy"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  className="w-full h-full p-2 object-contain group-hover:scale-105 transition-transform duration-500"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
-                <div className="absolute bottom-3 left-4 w-10 h-10 bg-white/95 backdrop-blur-sm rounded-xl flex items-center justify-center text-indigo-600 shadow-lg">
+                <div className="absolute bottom-3 left-4 w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-600/30">
                   <Icon className="w-5 h-5" />
                 </div>
               </div>

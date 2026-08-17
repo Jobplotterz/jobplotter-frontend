@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
-  FileText, Sparkles, Plus, Upload, LayoutDashboard, User as UserIcon, Briefcase, X, Pencil, Clock,
-  Search, ScanSearch, ArrowUpRight, ArrowRight
+  FileText, Sparkles, Plus, Upload, LayoutDashboard, Briefcase, X, Pencil, Clock,
+  Search, ScanSearch, ArrowUpRight, ArrowRight, ClipboardList, CalendarCheck, Award, Eye
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -36,6 +36,25 @@ export function Dashboard() {
 
   const [recentVisits, setRecentVisits] = useState<any[]>([]);
   const [isVisitsLoading, setIsVisitsLoading] = useState(true);
+
+  const [applications, setApplications] = useState<any[]>([]);
+
+  const fetchApplications = async () => {
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/applications/`, {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setApplications(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch applications:", error);
+    }
+  };
 
   const fetchRecentVisits = async () => {
     try {
@@ -78,6 +97,7 @@ export function Dashboard() {
   useEffect(() => {
     fetchResumes();
     fetchRecentVisits();
+    fetchApplications();
   }, []);
 
   if (isLoading) {
@@ -91,6 +111,34 @@ export function Dashboard() {
   const activeResume = resumes.find((r) => r.isDefault) || resumes[0];
 
   const firstName = user?.name?.split(" ")[0] || "there";
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const todayStr = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric"
+  });
+
+  const statusCounts = applications.reduce(
+    (acc: Record<string, number>, a: any) => {
+      acc[a.status] = (acc[a.status] || 0) + 1;
+      return acc;
+    },
+    { saved: 0, applied: 0, interviewing: 0, offer: 0, rejected: 0 }
+  );
+  const trackedTotal = applications.length;
+  const recentApplications = [...applications]
+    .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+    .slice(0, 4);
+
+  const STATUS_META: Record<string, { label: string; chip: string; dot: string }> = {
+    saved: { label: "Saved", chip: "bg-slate-100 text-slate-700", dot: "bg-slate-400" },
+    applied: { label: "Applied", chip: "bg-indigo-50 text-indigo-700", dot: "bg-indigo-500" },
+    interviewing: { label: "Interviewing", chip: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
+    offer: { label: "Offer", chip: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
+    rejected: { label: "Rejected", chip: "bg-red-50 text-red-700", dot: "bg-red-400" }
+  };
 
   return (
     <div className="max-w-6xl mx-auto w-full px-5 sm:px-8 py-8 pb-14 font-sans text-slate-900">
@@ -155,95 +203,88 @@ export function Dashboard() {
       ) : (
         /* DASHBOARD STATE */
         <>
-          {/* Hero header — light, with soft color glows */}
-          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-50 via-white to-purple-50/60 border border-slate-100 text-slate-900 px-6 sm:px-9 pt-7 pb-16 sm:pt-9 sm:pb-20 shadow-sm">
-            <div className="absolute -top-24 -right-10 w-80 h-80 bg-indigo-200/40 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-28 -left-16 w-80 h-80 bg-pink-200/30 rounded-full blur-3xl pointer-events-none" />
-            <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
-              <div className="flex items-center gap-4 sm:gap-5 min-w-0">
-                <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-2xl bg-white ring-1 ring-slate-200 shadow-sm flex items-center justify-center overflow-hidden shrink-0 text-indigo-600">
-                  {user?.image ? (
-                    <img src={user.image} alt={user.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <UserIcon className="w-8 h-8" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-600 mb-1.5">Welcome back</p>
-                  <h1 className="text-2xl sm:text-[28px] font-extrabold tracking-tight leading-none truncate text-slate-900">Hi, {firstName}</h1>
-                  <p className="text-[13px] text-slate-500 font-medium mt-2 truncate">
-                    {activeResume?.title || "Active Resume"} <span className="text-slate-300">&bull;</span> {user?.email}
-                  </p>
-                </div>
-              </div>
-              <div className="shrink-0">
-                <button
-                  onClick={() => setIsUploadModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" /> New Resume
-                </button>
-              </div>
+          {/* Page header */}
+          <section className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-6 border-b border-slate-200/70">
+            <div className="min-w-0">
+              <p className="text-[12px] font-medium text-slate-400">{todayStr}</p>
+              <h1 className="text-2xl sm:text-[27px] font-extrabold tracking-tight text-slate-900 mt-1 truncate">
+                {greeting}, {firstName}
+              </h1>
+              <p className="text-sm text-slate-500 mt-1">Here's where your job search stands today.</p>
+            </div>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <Link
+                to="/dashboard/jobs"
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-colors"
+              >
+                <Search className="w-4 h-4" /> Find Jobs
+              </Link>
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> New Resume
+              </button>
             </div>
           </section>
 
-          {/* Glassy stat cards overlapping the hero */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 -mt-9 relative z-20">
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-xl shadow-slate-900/5 p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><FileText className="w-5 h-5" /></div>
-                <div className="min-w-0">
-                  <p className="text-2xl font-extrabold text-slate-900 leading-none">{resumes.length}</p>
-                  <p className="text-[11px] font-semibold text-slate-500 mt-1">{resumes.length === 1 ? "Resume" : "Resumes"}</p>
+          {/* KPI row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-6">
+            {[
+              { label: "Tracked jobs", value: trackedTotal, icon: ClipboardList, tint: "bg-indigo-50 text-indigo-600", href: "/dashboard/applications" },
+              { label: "Applications sent", value: statusCounts.applied + statusCounts.interviewing + statusCounts.offer, icon: Briefcase, tint: "bg-sky-50 text-sky-600", href: "/dashboard/applications" },
+              { label: "Interviews", value: statusCounts.interviewing, icon: CalendarCheck, tint: "bg-amber-50 text-amber-600", href: "/dashboard/applications" },
+              { label: "Offers", value: statusCounts.offer, icon: Award, tint: "bg-emerald-50 text-emerald-600", href: "/dashboard/applications" }
+            ].map(({ label, value, icon: Icon, tint, href }) => (
+              <Link
+                key={label}
+                to={href}
+                className="group bg-white rounded-2xl border border-slate-200/70 p-4 sm:p-5 hover:border-indigo-200 hover:shadow-md hover:shadow-slate-900/5 transition-all"
+              >
+                <div className="flex items-start justify-between">
+                  <p className="text-[12px] font-semibold text-slate-500">{label}</p>
+                  <div className={`w-8 h-8 rounded-lg ${tint} flex items-center justify-center shrink-0`}>
+                    <Icon className="w-4 h-4" />
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-xl shadow-slate-900/5 p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><Briefcase className="w-5 h-5" /></div>
-                <div className="min-w-0">
-                  <p className="text-2xl font-extrabold text-slate-900 leading-none">{recentVisits.length}</p>
-                  <p className="text-[11px] font-semibold text-slate-500 mt-1">Jobs viewed</p>
-                </div>
-              </div>
-            </div>
-            <div className="col-span-2 lg:col-span-1 bg-white rounded-2xl border border-slate-100 shadow-xl shadow-slate-900/5 p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-fuchsia-50 text-fuchsia-600 flex items-center justify-center shrink-0"><Sparkles className="w-5 h-5" /></div>
-                <div className="min-w-0">
-                  <p className="text-sm font-extrabold text-slate-900 leading-tight truncate">{activeResume?.title || "—"}</p>
-                  <p className="text-[11px] font-semibold text-slate-500 mt-1">Active resume</p>
-                </div>
-              </div>
-            </div>
+                <p className="text-[26px] font-extrabold text-slate-900 leading-none mt-2 font-departure">{value}</p>
+              </Link>
+            ))}
           </div>
 
-          {/* Quick actions */}
-          <section className="mt-9">
-            <h2 className="text-sm font-bold text-slate-900 mb-3">Quick actions</h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Link to="/dashboard/builder" className="group bg-white rounded-2xl border border-slate-100 shadow-sm p-4 hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 transition-all">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><Plus className="w-5 h-5" /></div>
-                <p className="text-[13px] font-bold text-slate-900 flex items-center gap-1">Build resume <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 transition-colors" /></p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Start from scratch</p>
-              </Link>
-              <button onClick={() => setIsUploadModalOpen(true)} className="group text-left bg-white rounded-2xl border border-slate-100 shadow-sm p-4 hover:shadow-md hover:border-sky-200 hover:-translate-y-0.5 transition-all cursor-pointer">
-                <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><Upload className="w-5 h-5" /></div>
-                <p className="text-[13px] font-bold text-slate-900 flex items-center gap-1">Upload resume <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-sky-500 transition-colors" /></p>
-                <p className="text-[11px] text-slate-500 mt-0.5">PDF or DOCX</p>
-              </button>
-              <Link to="/dashboard/jobs" className="group bg-white rounded-2xl border border-slate-100 shadow-sm p-4 hover:shadow-md hover:border-emerald-200 hover:-translate-y-0.5 transition-all">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><Search className="w-5 h-5" /></div>
-                <p className="text-[13px] font-bold text-slate-900 flex items-center gap-1">Find jobs <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-emerald-500 transition-colors" /></p>
-                <p className="text-[11px] text-slate-500 mt-0.5">AI-matched roles</p>
-              </Link>
-              <Link to={`/dashboard/review?id=${activeResume?._id || ""}`} className="group bg-white rounded-2xl border border-slate-100 shadow-sm p-4 hover:shadow-md hover:border-fuchsia-200 hover:-translate-y-0.5 transition-all">
-                <div className="w-10 h-10 rounded-xl bg-fuchsia-50 text-fuchsia-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><ScanSearch className="w-5 h-5" /></div>
-                <p className="text-[13px] font-bold text-slate-900 flex items-center gap-1">AI review <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-fuchsia-500 transition-colors" /></p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Score &amp; optimize</p>
-              </Link>
-            </div>
-          </section>
+          {/* Pipeline strip */}
+          {trackedTotal > 0 && (
+            <Link
+              to="/dashboard/applications"
+              className="mt-4 flex flex-col gap-3 bg-white rounded-2xl border border-slate-200/70 p-4 sm:px-5 hover:border-indigo-200 transition-colors group"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-[12px] font-semibold text-slate-500">Application pipeline</p>
+                <span className="text-[12px] font-bold text-indigo-600 inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Open tracker <ArrowRight className="w-3.5 h-3.5" />
+                </span>
+              </div>
+              <div className="flex h-2 rounded-full overflow-hidden bg-slate-100">
+                {(["saved", "applied", "interviewing", "offer", "rejected"] as const).map((s) =>
+                  statusCounts[s] > 0 ? (
+                    <div
+                      key={s}
+                      className={`${STATUS_META[s].dot} h-full`}
+                      style={{ width: `${(statusCounts[s] / trackedTotal) * 100}%` }}
+                    />
+                  ) : null
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+                {(["saved", "applied", "interviewing", "offer", "rejected"] as const).map((s) => (
+                  <span key={s} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                    <span className={`w-2 h-2 rounded-full ${STATUS_META[s].dot}`} />
+                    {STATUS_META[s].label} <span className="text-slate-900 font-bold">{statusCounts[s]}</span>
+                  </span>
+                ))}
+              </div>
+            </Link>
+          )}
 
           <div className="mt-10 mb-6">
             <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/60">
@@ -272,74 +313,198 @@ export function Dashboard() {
           </div>
 
           {activeTab === "overview" ? (
-            <div className="space-y-10">
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-bold text-slate-900">Recently viewed jobs</h2>
-                  {recentVisits.length > 0 && (
-                    <Link to="/dashboard/jobs" className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+              {/* Left: activity */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Recent applications */}
+                <section className="bg-white border border-slate-200/70 rounded-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                    <h2 className="text-sm font-bold text-slate-900">Recent applications</h2>
+                    <Link to="/dashboard/applications" className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
                       View all <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
+                  </div>
+                  {recentApplications.length === 0 ? (
+                    <div className="px-5 py-10 text-center">
+                      <ClipboardList className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                      <p className="text-sm font-medium text-slate-500">Nothing tracked yet.</p>
+                      <p className="text-xs text-slate-400 mt-1">Save or apply to a job and it will show up here.</p>
+                      <Link
+                        to="/dashboard/jobs"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 mt-3"
+                      >
+                        Browse jobs <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-slate-100">
+                      {recentApplications.map((app) => {
+                        const job = app.job || {};
+                        const meta = STATUS_META[app.status] || STATUS_META.saved;
+                        const updated = app.updatedAt
+                          ? new Date(app.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                          : "";
+                        return (
+                          <li key={app._id}>
+                            <Link
+                              to="/dashboard/applications"
+                              className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/70 transition-colors"
+                            >
+                              <CompanyLogo company={job.company} logo={job.logo} className="w-9 h-9" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-bold text-slate-900 truncate">{job.title || "Untitled role"}</p>
+                                <p className="text-[12px] text-slate-500 truncate">
+                                  {job.company || "Unknown company"} &bull; {job.location || "Anywhere"}
+                                </p>
+                              </div>
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 ${meta.chip}`}>
+                                {meta.label}
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-400 shrink-0 w-14 text-right hidden sm:block">{updated}</span>
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   )}
-                </div>
-                {isVisitsLoading ? (
-                  <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm flex justify-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+                </section>
+
+                {/* Recently viewed jobs */}
+                <section className="bg-white border border-slate-200/70 rounded-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                    <h2 className="text-sm font-bold text-slate-900">Recently viewed jobs</h2>
+                    {recentVisits.length > 0 && (
+                      <Link to="/dashboard/jobs" className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
+                        View all <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    )}
                   </div>
-                ) : recentVisits.length === 0 ? (
-                  <div className="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm text-center">
-                    <Briefcase className="w-8 h-8 text-slate-300 mx-auto mb-3 animate-pulse" style={{ opacity: 0.7 }} />
-                    <p className="text-sm font-medium text-slate-500">No recently viewed jobs yet.</p>
-                    <Link 
-                      to="/dashboard/jobs" 
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 mt-2"
-                    >
-                      Explore Jobs &rarr;
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {recentVisits.map((visit) => {
-                      const job = visit.job;
-                      if (!job) return null;
-                      const visitedDate = new Date(visit.visitedAt).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      });
-                      return (
-                        <div
-                          key={visit._id}
-                          className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-100 transition-all"
-                        >
-                          <div className="flex items-center gap-4 min-w-0">
-                            <CompanyLogo
-                              company={job.company}
-                              logo={job.logo}
-                              className="w-10 h-10"
-                            />
-                            <div className="min-w-0">
-                              <h3 className="text-sm font-bold text-slate-900 truncate">
-                                {job.title}
-                              </h3>
-                              <p className="text-xs font-semibold text-slate-500 truncate">
-                                {job.company || "Unknown Company"} &bull; {job.location || "Anywhere"}
+                  {isVisitsLoading ? (
+                    <div className="p-6 flex justify-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+                    </div>
+                  ) : recentVisits.length === 0 ? (
+                    <div className="px-5 py-10 text-center">
+                      <Briefcase className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                      <p className="text-sm font-medium text-slate-500">No recently viewed jobs yet.</p>
+                      <Link
+                        to="/dashboard/jobs"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 mt-2"
+                      >
+                        Explore jobs <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-slate-100">
+                      {recentVisits.slice(0, 6).map((visit) => {
+                        const job = visit.job;
+                        if (!job) return null;
+                        const visitedDate = new Date(visit.visitedAt).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric"
+                        });
+                        return (
+                          <li key={visit._id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/70 transition-colors">
+                            <CompanyLogo company={job.company} logo={job.logo} className="w-9 h-9" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-bold text-slate-900 truncate">{job.title}</p>
+                              <p className="text-[12px] text-slate-500 truncate">
+                                {job.company || "Unknown company"} &bull; {job.location || "Anywhere"}
                               </p>
                             </div>
-                          </div>
-                          <div className="text-right shrink-0 ml-4">
-                            <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5" />
-                              {visitedDate}
+                            <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1 shrink-0">
+                              <Clock className="w-3.5 h-3.5" /> {visitedDate}
                             </span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </section>
+              </div>
+
+              {/* Right: resume panel + shortcuts */}
+              <div className="space-y-6">
+                <section className="bg-white border border-slate-200/70 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-sm font-bold text-slate-900">Active resume</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase tracking-wide">Active</span>
                   </div>
-                )}
-              </section>
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-11 h-11 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0">
+                      <FileText className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">{activeResume?.title || "Untitled Resume"}</p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Updated{" "}
+                        {activeResume?.updatedAt || activeResume?._creationTime
+                          ? new Date(activeResume.updatedAt || activeResume._creationTime).toLocaleDateString()
+                          : "recently"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-5">
+                    <Link
+                      to={`/dashboard/builder?resumeId=${activeResume?._id || ""}`}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Edit
+                    </Link>
+                    <Link
+                      to={`/dashboard/review?id=${activeResume?._id || ""}`}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
+                    >
+                      <ScanSearch className="w-3.5 h-3.5" /> AI Review
+                    </Link>
+                    <button
+                      onClick={() => activeResume && setPreviewResume(activeResume)}
+                      className="col-span-2 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12px] font-bold text-slate-700 bg-slate-50 border border-slate-100 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Preview
+                    </button>
+                  </div>
+                </section>
+
+                <section className="bg-white border border-slate-200/70 rounded-2xl p-2">
+                  <h2 className="text-sm font-bold text-slate-900 px-3 pt-3 pb-2">Shortcuts</h2>
+                  <nav className="pb-1">
+                    {[
+                      { to: "/dashboard/jobs", icon: Search, label: "Find matched jobs", sub: "Scored against your resume" },
+                      { to: "/dashboard/builder", icon: Plus, label: "Build a new resume", sub: "Start from scratch or a template" },
+                      { to: "/dashboard/applications", icon: ClipboardList, label: "Application tracker", sub: "Update stages and follow up" }
+                    ].map(({ to, icon: Icon, label, sub }) => (
+                      <Link
+                        key={to + label}
+                        to={to}
+                        className="group flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors"
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 flex items-center justify-center shrink-0 transition-colors">
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-bold text-slate-900">{label}</p>
+                          <p className="text-[11px] text-slate-500 truncate">{sub}</p>
+                        </div>
+                        <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors shrink-0" />
+                      </Link>
+                    ))}
+                    <button
+                      onClick={() => setIsUploadModalOpen(true)}
+                      className="group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer text-left"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 flex items-center justify-center shrink-0 transition-colors">
+                        <Upload className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-bold text-slate-900">Upload a resume</p>
+                        <p className="text-[11px] text-slate-500 truncate">PDF or DOCX</p>
+                      </div>
+                      <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors shrink-0" />
+                    </button>
+                  </nav>
+                </section>
+              </div>
             </div>
           ) : (
             <section>
