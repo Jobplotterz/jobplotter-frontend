@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "../components/Navbar";
 import { Footer } from "../components/Footer";
-import { Check, X, Loader2 } from "lucide-react";
+import { Check, X, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const plans = [
@@ -69,6 +69,9 @@ const plans = [
   }
 ];
 
+// Feature rows shown before a long card collapses behind "+N more features"
+const FEATURE_PREVIEW_COUNT = 5;
+
 const comparisonFeatures = [
   { name: "Active Resumes", starter: "Up to 3", growth: "Unlimited", enterprise: "Unlimited" },
   { name: "Resume Templates", starter: "All Templates", growth: "All Templates", enterprise: "All Templates" },
@@ -92,6 +95,10 @@ export function Pricing() {
   const checkoutCancelled = searchParams.get("checkout") === "cancelled";
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [expandedPlans, setExpandedPlans] = useState<Record<string, boolean>>({});
+
+  const toggleExpanded = (planId: string) =>
+    setExpandedPlans((prev) => ({ ...prev, [planId]: !prev[planId] }));
 
   const handlePlanClick = async (planId: string) => {
     if (!isAuthenticated) {
@@ -167,8 +174,12 @@ export function Pricing() {
 
       {/* Pricing Cards */}
       <section className="relative z-10 max-w-7xl mx-auto px-5 sm:px-8 pb-16 sm:pb-20">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-          {plans.map((plan, index) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+          {plans.map((plan, index) => {
+            const isExpanded = !!expandedPlans[plan.id];
+            const hiddenCount = plan.features.length - FEATURE_PREVIEW_COUNT;
+            const visibleFeatures = isExpanded ? plan.features : plan.features.slice(0, FEATURE_PREVIEW_COUNT);
+            return (
             <div
               key={index}
               className={`flex flex-col rounded-2xl border ${plan.popular ? 'border-indigo-600 shadow-xl shadow-indigo-100' : 'border-slate-200 shadow-sm'} overflow-hidden bg-white`}
@@ -201,9 +212,9 @@ export function Pricing() {
               </div>
 
               {/* Card Features */}
-              <div className="p-6 bg-white flex-1">
+              <div className="p-6 bg-white flex-1 flex flex-col">
                 <ul className="space-y-3.5">
-                  {plan.features.map((feature, fIndex) => (
+                  {visibleFeatures.map((feature, fIndex) => (
                     <li key={fIndex} className="flex items-start gap-2.5">
                       <div className="shrink-0 w-4.5 h-4.5 rounded-full bg-indigo-100 flex items-center justify-center mt-0.5" style={{ width: '18px', height: '18px' }}>
                         <Check className="w-2.5 h-2.5 text-indigo-600 stroke-3" />
@@ -212,9 +223,31 @@ export function Pricing() {
                     </li>
                   ))}
                 </ul>
+                {hiddenCount > 0 && (
+                  <button
+                    onClick={() => toggleExpanded(plan.id)}
+                    aria-expanded={isExpanded}
+                    className="group/expand mt-auto pt-4 w-full cursor-pointer"
+                  >
+                    <span className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-[12px] font-semibold text-slate-400 border border-dashed border-slate-200 group-hover/expand:text-indigo-600 group-hover/expand:border-indigo-200 group-hover/expand:bg-indigo-50/60 transition-all">
+                      {isExpanded ? (
+                        <>
+                          Show less
+                          <ChevronUp className="w-3.5 h-3.5 group-hover/expand:-translate-y-0.5 transition-transform" />
+                        </>
+                      ) : (
+                        <>
+                          +{hiddenCount} more features
+                          <ChevronDown className="w-3.5 h-3.5 group-hover/expand:translate-y-0.5 transition-transform" />
+                        </>
+                      )}
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
