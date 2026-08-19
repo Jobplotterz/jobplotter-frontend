@@ -3,6 +3,12 @@ import { useSearchParams } from "react-router-dom";
 import { FileText, Check, Loader2, Clock, Settings as SettingsIcon, User, Key, CreditCard } from "lucide-react";
 import { signalExtensionSync, signalExtensionResumeSwitch } from "../lib/extensionSync";
 
+const PLAN_OPTIONS: { id: "basic" | "pro" | "premium"; label: string; price: string }[] = [
+  { id: "basic", label: "Basic", price: "$5" },
+  { id: "pro", label: "Pro", price: "$12" },
+  { id: "premium", label: "Premium", price: "$29" },
+];
+
 export function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [resumes, setResumes] = useState<any[]>([]);
@@ -98,7 +104,7 @@ export function Settings() {
   };
 
   // --- Billing ---
-  const [billingStatus, setBillingStatus] = useState<{ plan: string; subscriptionStatus: string | null; currentPeriodEnd: number | null } | null>(null);
+  const [billingStatus, setBillingStatus] = useState<{ plan: string; subscriptionStatus: string | null; currentPeriodEnd: number | null; cancelAtPeriodEnd: boolean } | null>(null);
   const [isBillingLoading, setIsBillingLoading] = useState(true);
   const [billingActionPlan, setBillingActionPlan] = useState<string | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
@@ -190,6 +196,102 @@ export function Settings() {
       setBillingError(errorMsg);
     } catch (e) {
       console.error("Failed to open billing portal:", e);
+      setBillingError("We couldn't reach the billing service. Check your connection and try again.");
+    } finally {
+      setBillingActionPlan(null);
+    }
+  };
+
+  // Switches an existing subscription's plan directly — NOT a new checkout.
+  // Starting another Checkout Session while already subscribed would create
+  // a second, separate subscription instead of replacing the first.
+  const changePlan = async (plan: "basic" | "pro" | "premium") => {
+    setBillingError(null);
+    setBillingActionPlan(plan);
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/billing/change-plan`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ plan })
+      });
+      if (response.ok) {
+        setBillingStatus(await response.json());
+        return;
+      }
+      let errorMsg = "Couldn't change your plan. Please try again.";
+      try {
+        const body = await response.clone().json();
+        if (body?.detail) errorMsg = body.detail;
+      } catch {
+        // ignore
+      }
+      setBillingError(errorMsg);
+    } catch (e) {
+      console.error("Failed to change plan:", e);
+      setBillingError("We couldn't reach the billing service. Check your connection and try again.");
+    } finally {
+      setBillingActionPlan(null);
+    }
+  };
+
+  const cancelSubscription = async () => {
+    if (!window.confirm("Cancel your subscription? You'll keep access until the end of your current billing period.")) return;
+    setBillingError(null);
+    setBillingActionPlan("cancel");
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/billing/cancel-subscription`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        setBillingStatus(prev => prev ? { ...prev, cancelAtPeriodEnd: result.cancelAtPeriodEnd, currentPeriodEnd: result.currentPeriodEnd } : prev);
+        return;
+      }
+      let errorMsg = "Couldn't cancel your subscription. Please try again.";
+      try {
+        const body = await response.clone().json();
+        if (body?.detail) errorMsg = body.detail;
+      } catch {
+        // ignore
+      }
+      setBillingError(errorMsg);
+    } catch (e) {
+      console.error("Failed to cancel subscription:", e);
+      setBillingError("We couldn't reach the billing service. Check your connection and try again.");
+    } finally {
+      setBillingActionPlan(null);
+    }
+  };
+
+  const resumeSubscription = async () => {
+    setBillingError(null);
+    setBillingActionPlan("resume");
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/billing/resume-subscription`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (response.ok) {
+        setBillingStatus(prev => prev ? { ...prev, cancelAtPeriodEnd: false } : prev);
+        return;
+      }
+      let errorMsg = "Couldn't resume your subscription. Please try again.";
+      try {
+        const body = await response.clone().json();
+        if (body?.detail) errorMsg = body.detail;
+      } catch {
+        // ignore
+      }
+      setBillingError(errorMsg);
+    } catch (e) {
+      console.error("Failed to resume subscription:", e);
       setBillingError("We couldn't reach the billing service. Check your connection and try again.");
     } finally {
       setBillingActionPlan(null);
@@ -508,7 +610,7 @@ export function Settings() {
                 {billingStatus?.subscriptionStatus && billingStatus.plan !== "free" && (
                   <p className="text-[11px] text-slate-500 mt-0.5 capitalize">
                     {billingStatus.subscriptionStatus}
-                    {billingStatus.currentPeriodEnd ? ` · renews ${new Date(billingStatus.currentPeriodEnd).toLocaleDateString()}` : ""}
+                    {billingStatus.currentPeriodEnd ? ` · ${billingStatus.cancelAtPeriodEnd ? "ends" : "renews"} ${new Date(billingStatus.currentPeriodEnd).toLocaleDateString()}` : ""}
                   </p>
                 )}
               </div>
@@ -523,6 +625,48 @@ export function Settings() {
                 </button>
               )}
             </div>
+
+            {billingStatus?.plan && billingStatus.plan !== "free" && billingStatus.cancelAtPeriodEnd && (
+              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
+                <p className="text-[12px] font-semibold text-amber-800">
+                  Your plan will end{billingStatus.currentPeriodEnd ? ` on ${new Date(billingStatus.currentPeriodEnd).toLocaleDateString()}` : ""}. You'll keep access until then.
+                </p>
+                <button
+                  onClick={resumeSubscription}
+                  disabled={billingActionPlan === "resume"}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {billingActionPlan === "resume" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Resume Subscription
+                </button>
+              </div>
+            )}
+
+            {billingStatus?.plan && billingStatus.plan !== "free" && !billingStatus.cancelAtPeriodEnd && (
+              <div className="space-y-3">
+                <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Switch Plan</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {PLAN_OPTIONS.filter((p) => p.id !== billingStatus.plan).map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => changePlan(p.id)}
+                      disabled={!!billingActionPlan}
+                      className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold rounded-xl bg-white border border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {billingActionPlan === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      Switch to {p.label} — {p.price}/mo
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={cancelSubscription}
+                  disabled={!!billingActionPlan}
+                  className="text-[11px] font-semibold text-slate-400 hover:text-red-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {billingActionPlan === "cancel" ? "Canceling..." : "Cancel subscription"}
+                </button>
+              </div>
+            )}
 
             {(!billingStatus?.plan || billingStatus.plan === "free") && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
