@@ -25,7 +25,7 @@ const plans = [
       "Unlimited job search & AI match scores",
       "Save up to 50 jobs",
       "Application tracker (up to 25 active)",
-      "PDF export",
+      "DOCX export",
       "Browser extension — save jobs & match scores",
       "Email support"
     ]
@@ -45,7 +45,7 @@ const plans = [
       "Unlimited resumes",
       "40 AI resume actions/day",
       "Browser extension with autofill",
-      "DOCX export",
+      "PDF export",
       "Unlimited saved jobs",
       "Unlimited application tracker",
       "Priority email support"
@@ -83,7 +83,8 @@ const comparisonFeatures = [
   { name: "Saved Jobs", starter: "Up to 50", growth: "Unlimited", enterprise: "Unlimited" },
   { name: "Application Tracker", starter: "Up to 25", growth: "Unlimited", enterprise: "Unlimited" },
   { name: "Browser Extension", starter: "Save & match scores", growth: "Full autofill", enterprise: "Full autofill" },
-  { name: "DOCX Export", starter: false, growth: true, enterprise: true },
+  { name: "PDF Export", starter: false, growth: true, enterprise: true },
+  { name: "DOCX Export", starter: true, growth: true, enterprise: true },
   { name: "Priority AI Queue", starter: false, growth: false, enterprise: true },
   { name: "Support", starter: "Email", growth: "Priority Email", enterprise: "Priority Email" }
 ];

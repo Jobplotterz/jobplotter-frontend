@@ -90,7 +90,7 @@ export function Builder() {
     setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
   };
 
-  const handleDownload = async () => {
+  const handleDownloadPdf = async () => {
     // Template is part of the cache key — switching templates must regenerate.
     const currentHash = JSON.stringify({ d: resumeData, t: template });
     const filename = `${resumeData.personalInfo.fullName || 'resume'}.pdf`;
@@ -108,22 +108,42 @@ export function Builder() {
     try {
       setIsDownloading(true);
 
+      // The plan check is server-side: this call is what actually decides
+      // whether a PDF gets generated, not the locally-held userPlan flag.
+      const authToken = localStorage.getItem("jobplotter_token");
+      const tokenRes = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/pdf-export-token`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${authToken}` },
+      });
+      if (!tokenRes.ok) {
+        let errorMsg = "Failed to authorize PDF export. Please try again.";
+        try {
+          const body = await tokenRes.clone().json();
+          if (body?.detail) errorMsg = body.detail;
+        } catch {
+          // ignore
+        }
+        throw new Error(errorMsg);
+      }
+      const { token: exportToken } = await tokenRes.json();
+
       // Generate the PDF on-device from the same template as the preview
       // (react-pdf). Dynamically imported so its bundle is code-split.
-      const { generateResumePdfBlob } = await import('../components/resumeTemplates');
-      const blob = await generateResumePdfBlob(resumeData, template);
+      const { requestPdfExport } = await import('../components/resumeTemplates');
+      const blob = await requestPdfExport(resumeData, template, exportToken);
       setCachedDownload({ hash: currentHash, blob });
       downloadBlob(blob, filename, iosTab, isIOS);
-    } catch (err) {
+    } catch (err: any) {
       console.error('PDF Generation Error:', err);
       if (iosTab) iosTab.close();
-      alert('Failed to generate PDF. Please try again.');
+      alert(err?.message || 'Failed to generate PDF. Please try again.');
     } finally {
       setIsDownloading(false);
     }
   };
 
-  const canExportDocx = userPlan === "pro" || userPlan === "premium";
+  const canExportPdf = userPlan === "pro" || userPlan === "premium";
+  const canExportDocx = userPlan !== "free";
 
   const handleDownloadDocx = async () => {
     if (!canExportDocx || isDownloadingDocx) return;
@@ -271,13 +291,6 @@ export function Builder() {
               <ChevronDown className="w-3.5 h-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 p-2 rounded-xl shadow-xl border-slate-200">
-              <DropdownMenuItem
-                onClick={handleDownload}
-                className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:bg-slate-50"
-              >
-                <FileText className="w-3.5 h-3.5 text-slate-500" />
-                <span className="text-sm font-bold text-slate-700">Download PDF</span>
-              </DropdownMenuItem>
               {!canExportDocx ? (
                 <Link
                   to="/pricing"
@@ -285,7 +298,7 @@ export function Builder() {
                 >
                   <Lock className="w-3.5 h-3.5 text-slate-400" />
                   <span className="text-sm font-bold text-slate-700 flex-1">Download DOCX</span>
-                  <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-600 rounded-full">Pro</span>
+                  <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-600 rounded-full">Upgrade</span>
                 </Link>
               ) : (
                 <DropdownMenuItem
@@ -294,6 +307,24 @@ export function Builder() {
                 >
                   <FileText className="w-3.5 h-3.5 text-slate-500" />
                   <span className="text-sm font-bold text-slate-700">Download DOCX</span>
+                </DropdownMenuItem>
+              )}
+              {!canExportPdf ? (
+                <Link
+                  to="/pricing"
+                  className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:bg-slate-50"
+                >
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-sm font-bold text-slate-700 flex-1">Download PDF</span>
+                  <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-600 rounded-full">Pro</span>
+                </Link>
+              ) : (
+                <DropdownMenuItem
+                  onClick={handleDownloadPdf}
+                  className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:bg-slate-50"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="text-sm font-bold text-slate-700">Download PDF</span>
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

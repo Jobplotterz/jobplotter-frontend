@@ -19,7 +19,7 @@ const faqSections = [
       },
       {
         q: "How much does Jobplotter cost?",
-        a: "Every plan starts with a 7-day free trial on Basic ($5/mo), which includes resume building, AI review and matching, and application tracking. Pro ($12/mo) adds unlimited resumes, more daily AI actions, extension autofill, and DOCX export; Premium ($29/mo) raises the daily AI limit further. See the Pricing page for a full comparison."
+        a: "Every plan starts with a 7-day free trial on Basic ($5/mo), which includes resume building, AI review and matching, application tracking, and DOCX export. Pro ($12/mo) adds unlimited resumes, more daily AI actions, extension autofill, and PDF export; Premium ($29/mo) raises the daily AI limit further. See the Pricing page for a full comparison."
       }
     ]
   },
@@ -38,7 +38,7 @@ const faqSections = [
       },
       {
         q: "Can I export my resume as a PDF?",
-        a: "Yes — every plan exports clean PDFs with no watermark. DOCX export is available on the Pro and Premium plans."
+        a: "PDF export is available on the Pro and Premium plans. Every plan, including Basic, can export a DOCX."
       },
       {
         q: "What is the AI Co-Builder?",

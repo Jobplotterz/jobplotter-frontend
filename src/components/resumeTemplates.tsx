@@ -580,7 +580,43 @@ export function ResumeDocument({ data, templateId }: { data: ResumeData; templat
   return <Template data={data} />;
 }
 
-// Render the selected template to a Blob for the on-device download flow.
-export async function generateResumePdfBlob(data: ResumeData, templateId: TemplateId = DEFAULT_TEMPLATE): Promise<Blob> {
+// Render the selected template to a Blob. Used two ways: the live WYSIWYG
+// preview (ResumePdfPreview, always-on, not a "download") calls this
+// directly by design — gating it would break the builder's live preview,
+// and a screenshot/print of that preview was always possible regardless.
+// Actual file downloads go through the gated `requestPdfExport` below
+// instead of this export.
+export async function renderResumePdfPreviewBlob(data: ResumeData, templateId: TemplateId = DEFAULT_TEMPLATE): Promise<Blob> {
   return await pdf(<ResumeDocument data={data} templateId={templateId} />).toBlob();
+}
+
+/**
+ * Gated entry point for downloading a PDF. `exportToken` must be a token
+ * minted by POST /resumes/pdf-export-token, which only issues one after
+ * checking the user's plan server-side — this function won't render
+ * without one, so a stale/tampered local `userPlan` flag (or calling this
+ * directly from devtools with no token) can't produce a file on its own;
+ * the caller still has to make it past the real backend check first.
+ */
+export async function requestPdfExport(
+  data: ResumeData,
+  templateId: TemplateId = DEFAULT_TEMPLATE,
+  exportToken?: string,
+): Promise<Blob> {
+  if (!isLikelyValidExportToken(exportToken)) {
+    throw new Error("Missing or expired PDF export authorization.");
+  }
+  return pdf(<ResumeDocument data={data} templateId={templateId} />).toBlob();
+}
+
+function isLikelyValidExportToken(token: string | undefined): boolean {
+  if (!token) return false;
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return payload?.purpose === "pdf_export" && typeof payload?.exp === "number" && payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
 }

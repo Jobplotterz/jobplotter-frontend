@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { ResumeData } from "../types";
-import { generateResumePdfBlob } from "./resumeTemplates";
+import { renderResumePdfPreviewBlob } from "./resumeTemplates";
 import { RESUME_TEMPLATES, TemplateId, storeTemplate } from "./resumeTemplateMeta";
 
 interface Props {
@@ -27,7 +27,7 @@ export function ResumePdfPreview({ data, templateId, onTemplateChange, showPicke
     setError(false);
     const timer = setTimeout(async () => {
       try {
-        const blob = await generateResumePdfBlob(data, templateId);
+        const blob = await renderResumePdfPreviewBlob(data, templateId);
         if (genIdRef.current !== id) return; // a newer render superseded this one
         const objectUrl = URL.createObjectURL(blob);
         if (urlRef.current) URL.revokeObjectURL(urlRef.current);
@@ -55,22 +55,25 @@ export function ResumePdfPreview({ data, templateId, onTemplateChange, showPicke
   return (
     <div className="w-full flex-1 flex flex-col min-h-0">
       {showPicker && (
-        <div className="shrink-0 mb-3 flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">Template</span>
-          {RESUME_TEMPLATES.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => selectTemplate(t.id)}
-              title={t.description}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                templateId === t.id
-                  ? "bg-indigo-600 text-white border-indigo-600"
-                  : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-slate-900"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="shrink-0 mb-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">Template</span>
+            {RESUME_TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => selectTemplate(t.id)}
+                title={t.description}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                  templateId === t.id
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-slate-900"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] text-slate-400">Templates apply to the PDF download only — DOCX always uses one clean, ATS-friendly layout.</p>
         </div>
       )}
 

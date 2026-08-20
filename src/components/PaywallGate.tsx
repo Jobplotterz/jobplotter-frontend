@@ -11,11 +11,17 @@ interface BillingStatus {
   currentPeriodEnd: number | null;
 }
 
-// A user has access iff they're on a real plan. The webhook writes plan="free"
-// when a subscription is canceled/deleted, so this stays in lockstep with the
-// backend's capacity checks (which grant nothing to "free").
+// Same rule as the backend's get_user_plan()/ai_quotas.ts planLimit(): a
+// paid `plan` value alone isn't enough to grant access — the subscription
+// also has to actually be in good standing (a failed/incomplete payment
+// shouldn't keep unlocking the dashboard just because `plan` hasn't been
+// reset to "free" yet). The webhook writes plan="free" outright when a
+// subscription is fully canceled/deleted, but a merely-failed payment
+// leaves `plan` alone and just flips `subscriptionStatus`.
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
+
 function hasActivePlan(b: BillingStatus | null): boolean {
-  return !!b?.plan && b.plan !== "free";
+  return !!b?.plan && b.plan !== "free" && !!b.subscriptionStatus && ACTIVE_SUBSCRIPTION_STATUSES.has(b.subscriptionStatus);
 }
 
 async function fetchBillingStatus(): Promise<BillingStatus | null> {
