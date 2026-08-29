@@ -104,10 +104,11 @@ export function Settings() {
   };
 
   // --- Billing ---
-  const [billingStatus, setBillingStatus] = useState<{ plan: string; subscriptionStatus: string | null; currentPeriodEnd: number | null; cancelAtPeriodEnd: boolean } | null>(null);
+  const [billingStatus, setBillingStatus] = useState<{ plan: string; subscriptionStatus: string | null; currentPeriodEnd: number | null; cancelAtPeriodEnd: boolean; pendingPlan: string | null } | null>(null);
   const [isBillingLoading, setIsBillingLoading] = useState(true);
   const [billingActionPlan, setBillingActionPlan] = useState<string | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [billingSuccessMessage, setBillingSuccessMessage] = useState<string | null>(null);
   // Captured once at mount rather than read live from searchParams — mirrors
   // Builder.tsx's handling of `?resumeId=`, so clearing the param below
   // doesn't itself flip this back to false on the next render.
@@ -202,11 +203,14 @@ export function Settings() {
     }
   };
 
-  // Switches an existing subscription's plan directly — NOT a new checkout.
-  // Starting another Checkout Session while already subscribed would create
-  // a second, separate subscription instead of replacing the first.
+  // Schedules a plan switch for the end of the current billing period —
+  // NOT an immediate switch, and NOT a new checkout (starting another
+  // Checkout Session while already subscribed would create a second,
+  // separate subscription instead of replacing the first). The response
+  // carries `pendingPlan`; `plan` itself doesn't change until renewal.
   const changePlan = async (plan: "basic" | "pro" | "premium") => {
     setBillingError(null);
+    setBillingSuccessMessage(null);
     setBillingActionPlan(plan);
     try {
       const token = localStorage.getItem("jobplotter_token");
@@ -219,7 +223,11 @@ export function Settings() {
         body: JSON.stringify({ plan })
       });
       if (response.ok) {
-        setBillingStatus(await response.json());
+        const result = await response.json();
+        setBillingStatus(result);
+        const label = PLAN_OPTIONS.find((p) => p.id === plan)?.label || plan;
+        const dateStr = result.currentPeriodEnd ? ` on ${new Date(result.currentPeriodEnd).toLocaleDateString()}` : "";
+        setBillingSuccessMessage(`Scheduled — you'll switch to ${label}${dateStr}.`);
         return;
       }
       let errorMsg = "Couldn't change your plan. Please try again.";
@@ -241,6 +249,7 @@ export function Settings() {
   const cancelSubscription = async () => {
     if (!window.confirm("Cancel your subscription? You'll keep access until the end of your current billing period.")) return;
     setBillingError(null);
+    setBillingSuccessMessage(null);
     setBillingActionPlan("cancel");
     try {
       const token = localStorage.getItem("jobplotter_token");
@@ -250,7 +259,8 @@ export function Settings() {
       });
       if (response.ok) {
         const result = await response.json();
-        setBillingStatus(prev => prev ? { ...prev, cancelAtPeriodEnd: result.cancelAtPeriodEnd, currentPeriodEnd: result.currentPeriodEnd } : prev);
+        setBillingStatus(prev => prev ? { ...prev, cancelAtPeriodEnd: result.cancelAtPeriodEnd, currentPeriodEnd: result.currentPeriodEnd, pendingPlan: null } : prev);
+        setBillingSuccessMessage("Your subscription is set to cancel at the end of the billing period.");
         return;
       }
       let errorMsg = "Couldn't cancel your subscription. Please try again.";
@@ -271,6 +281,7 @@ export function Settings() {
 
   const resumeSubscription = async () => {
     setBillingError(null);
+    setBillingSuccessMessage(null);
     setBillingActionPlan("resume");
     try {
       const token = localStorage.getItem("jobplotter_token");
@@ -280,6 +291,7 @@ export function Settings() {
       });
       if (response.ok) {
         setBillingStatus(prev => prev ? { ...prev, cancelAtPeriodEnd: false } : prev);
+        setBillingSuccessMessage("Your subscription has been resumed.");
         return;
       }
       let errorMsg = "Couldn't resume your subscription. Please try again.";
@@ -292,6 +304,37 @@ export function Settings() {
       setBillingError(errorMsg);
     } catch (e) {
       console.error("Failed to resume subscription:", e);
+      setBillingError("We couldn't reach the billing service. Check your connection and try again.");
+    } finally {
+      setBillingActionPlan(null);
+    }
+  };
+
+  const cancelPendingPlanChange = async () => {
+    setBillingError(null);
+    setBillingSuccessMessage(null);
+    setBillingActionPlan("cancel-pending");
+    try {
+      const token = localStorage.getItem("jobplotter_token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/billing/cancel-pending-plan-change`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (response.ok) {
+        setBillingStatus(prev => prev ? { ...prev, pendingPlan: null } : prev);
+        setBillingSuccessMessage("Pending plan change cancelled.");
+        return;
+      }
+      let errorMsg = "Couldn't cancel the pending plan change. Please try again.";
+      try {
+        const body = await response.clone().json();
+        if (body?.detail) errorMsg = body.detail;
+      } catch {
+        // ignore
+      }
+      setBillingError(errorMsg);
+    } catch (e) {
+      console.error("Failed to cancel pending plan change:", e);
       setBillingError("We couldn't reach the billing service. Check your connection and try again.");
     } finally {
       setBillingActionPlan(null);
@@ -591,6 +634,12 @@ export function Settings() {
             You're all set! Your subscription is now active.
           </div>
         )}
+        {billingSuccessMessage && (
+          <div className="flex items-start justify-between gap-2 mb-4 px-3.5 py-2.5 rounded-xl bg-green-50 border border-green-100 text-xs font-bold text-green-700 animate-in fade-in duration-300">
+            <span>{billingSuccessMessage}</span>
+            <button onClick={() => setBillingSuccessMessage(null)} className="text-green-700/60 hover:text-green-800 cursor-pointer shrink-0">✕</button>
+          </div>
+        )}
         {billingError && (
           <div className="mb-4 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-100 text-xs font-bold text-red-700 animate-in fade-in duration-300">
             {billingError}
@@ -642,7 +691,24 @@ export function Settings() {
               </div>
             )}
 
-            {billingStatus?.plan && billingStatus.plan !== "free" && !billingStatus.cancelAtPeriodEnd && (
+            {billingStatus?.plan && billingStatus.plan !== "free" && !billingStatus.cancelAtPeriodEnd && billingStatus.pendingPlan && (
+              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-indigo-200 bg-indigo-50">
+                <p className="text-[12px] font-semibold text-indigo-800">
+                  Switching to {PLAN_OPTIONS.find((p) => p.id === billingStatus.pendingPlan)?.label || billingStatus.pendingPlan}
+                  {billingStatus.currentPeriodEnd ? ` on ${new Date(billingStatus.currentPeriodEnd).toLocaleDateString()}` : ""}. You keep your current plan until then.
+                </p>
+                <button
+                  onClick={cancelPendingPlanChange}
+                  disabled={billingActionPlan === "cancel-pending"}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-white border border-indigo-300 text-indigo-800 hover:bg-indigo-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {billingActionPlan === "cancel-pending" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Cancel pending change
+                </button>
+              </div>
+            )}
+
+            {billingStatus?.plan && billingStatus.plan !== "free" && !billingStatus.cancelAtPeriodEnd && !billingStatus.pendingPlan && (
               <div className="space-y-3">
                 <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Switch Plan</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -654,7 +720,7 @@ export function Settings() {
                       className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold rounded-xl bg-white border border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                     >
                       {billingActionPlan === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                      Switch to {p.label} — {p.price}/mo
+                      Schedule switch to {p.label} — {p.price}/mo
                     </button>
                   ))}
                 </div>

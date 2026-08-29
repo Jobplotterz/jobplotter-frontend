@@ -102,6 +102,7 @@ export function Review() {
   // Per-suggestion "Apply Fix"/"Add to Skills" state, keyed by a stable
   // string per suggestion/detailedFeedback item (e.g. "sugg-2", "content-0").
   const [fixingKey, setFixingKey] = useState<string | null>(null);
+  const [isApplyingAll, setIsApplyingAll] = useState(false);
   const [fixUndo, setFixUndo] = useState<Record<string, FixUndo>>({});
   const [fixError, setFixError] = useState<string | null>(null);
   // Cache the fetched PDF bytes by content hash so back-to-back clicks on the
@@ -292,6 +293,122 @@ export function Review() {
       delete next[key];
       return next;
     });
+  };
+
+  // Applies every open "Apply Fix" suggestion (from both the ATS section and
+  // the detailed-feedback accordion) in one action instead of clicking each
+  // one individually. Suggestions targeting the *same* field (e.g. two notes
+  // about the summary) are merged into a single improve-field call — firing
+  // them independently would race against the same stale `resumeData`
+  // snapshot and the second write would silently clobber the first. Distinct
+  // fields run concurrently; all resulting edits are applied in one state
+  // update built from a single draft, so nothing is lost to a stale closure.
+  const applyAllFixes = async () => {
+    if (isApplyingAll || fixingKey) return;
+
+    type FixItem = { key: string; fieldType: "summary" | "experience"; targetId: string | null; guidance: string };
+    type SkillItem = { key: string; skill: string };
+    const fixItems: FixItem[] = [];
+    const skillItems: SkillItem[] = [];
+
+    const consider = (key: string, fieldType: string, targetId: string | null, guidance: string, suggestedSkill: string | null | undefined) => {
+      if (fixUndo[key]) return; // already applied/undone-available
+      if (fieldType === "summary" || (fieldType === "experience" && targetId)) {
+        fixItems.push({ key, fieldType: fieldType as "summary" | "experience", targetId, guidance });
+      } else if (suggestedSkill && !resumeData.skills.includes(suggestedSkill)) {
+        skillItems.push({ key, skill: suggestedSkill });
+      }
+    };
+
+    review?.suggestions?.forEach((raw: any, i: number) => {
+      const s = normalizeSuggestion(raw);
+      consider(`sugg-${i}`, s.fieldType, s.targetId, s.text, s.suggestedSkill);
+    });
+    if (review?.detailedFeedback) {
+      Object.entries(review.detailedFeedback).forEach(([category, feedback]: [string, any]) => {
+        feedback?.forEach((item: any, i: number) => {
+          consider(`${category}-${i}`, item.fieldType, item.targetId ?? null, `${item.title}: ${item.desc}`, item.suggestedSkill);
+        });
+      });
+    }
+
+    if (fixItems.length === 0 && skillItems.length === 0) return;
+
+    setIsApplyingAll(true);
+    setFixError(null);
+
+    // Group same-field suggestions into one combined improve-field call.
+    const groups = new Map<string, FixItem[]>();
+    for (const item of fixItems) {
+      const groupKey = item.fieldType === "summary" ? "summary" : `experience:${item.targetId}`;
+      if (!groups.has(groupKey)) groups.set(groupKey, []);
+      groups.get(groupKey)!.push(item);
+    }
+
+    const token = localStorage.getItem("jobplotter_token");
+    const results = await Promise.allSettled(
+      Array.from(groups.entries()).map(async ([groupKey, items]) => {
+        const combinedGuidance = items.map(i => i.guidance).join(" · ");
+        let currentText: string;
+        let context: Record<string, any>;
+        if (items[0].fieldType === "summary") {
+          currentText = resumeData.personalInfo.summary;
+          context = { jobTitle: resumeData.personalInfo.jobTitle, guidance: combinedGuidance };
+        } else {
+          const exp = resumeData.experience.find(e => e.id === items[0].targetId);
+          if (!exp) throw new Error("Experience entry not found");
+          currentText = exp.description;
+          context = { position: exp.position, company: exp.company, guidance: combinedGuidance };
+        }
+        if (!currentText.trim()) throw new Error("Nothing to improve");
+
+        const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/resumes/improve-field`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ fieldType: items[0].fieldType, text: currentText, context })
+        });
+        if (!response.ok) throw new Error(await messageForOptimizationFailure(response, "We couldn't apply this fix."));
+        const result = await response.json();
+        return { groupKey, items, prevText: currentText, improved: result.improvedText as string };
+      })
+    );
+
+    const draft = {
+      ...resumeData,
+      personalInfo: { ...resumeData.personalInfo },
+      experience: [...resumeData.experience],
+      skills: [...resumeData.skills],
+    };
+    const undoUpdates: Record<string, FixUndo> = {};
+
+    for (const skillItem of skillItems) {
+      if (!draft.skills.includes(skillItem.skill)) draft.skills.push(skillItem.skill);
+      undoUpdates[skillItem.key] = { kind: "skill", skill: skillItem.skill };
+    }
+
+    let failureCount = 0;
+    for (const result of results) {
+      if (result.status === "rejected") {
+        failureCount++;
+        continue;
+      }
+      const { items, prevText, improved } = result.value;
+      if (items[0].fieldType === "summary") {
+        draft.personalInfo.summary = improved;
+        for (const item of items) undoUpdates[item.key] = { kind: "summary", prevText };
+      } else {
+        const targetId = items[0].targetId as string;
+        draft.experience = draft.experience.map(e => e.id === targetId ? { ...e, description: improved } : e);
+        for (const item of items) undoUpdates[item.key] = { kind: "experience", expId: targetId, prevText };
+      }
+    }
+
+    setResumeData(draft);
+    setFixUndo(prev => ({ ...prev, ...undoUpdates }));
+    if (failureCount > 0) {
+      setFixError(`Applied ${groups.size - failureCount} of ${groups.size} fixes — ${failureCount} field${failureCount > 1 ? "s" : ""} couldn't be improved. Try again for those.`);
+    }
+    setIsApplyingAll(false);
   };
 
   const runJobOptimization = async () => {
@@ -947,8 +1064,18 @@ export function Review() {
                       <h3 className="text-sm font-bold text-white mb-0.5">ATS Compatibility</h3>
                       <p className="text-[11px] text-slate-400">How well applicant tracking systems can parse your resume.</p>
                     </div>
-                    <div className="px-3 py-1 bg-white/10 rounded-lg text-lg font-bold border border-white/10">
-                      {review?.atsScore ?? 0}%
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={applyAllFixes}
+                        disabled={isApplyingAll || !!fixingKey}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 hover:bg-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        {isApplyingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                        {isApplyingAll ? "Applying all..." : "Apply All"}
+                      </button>
+                      <div className="px-3 py-1 bg-white/10 rounded-lg text-lg font-bold border border-white/10">
+                        {review?.atsScore ?? 0}%
+                      </div>
                     </div>
                   </div>
 
@@ -983,7 +1110,7 @@ export function Review() {
                                 ) : canFix ? (
                                   <button
                                     onClick={() => applyFieldFix(key, s.fieldType as "summary" | "experience", s.targetId, s.text)}
-                                    disabled={fixingKey === key}
+                                    disabled={fixingKey === key || isApplyingAll}
                                     className="flex items-center gap-1 text-[11px] font-bold text-indigo-300 hover:text-indigo-200 disabled:opacity-50 cursor-pointer"
                                   >
                                     {fixingKey === key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
@@ -992,7 +1119,8 @@ export function Review() {
                                 ) : canAddSkill ? (
                                   <button
                                     onClick={() => addSkillFix(key, s.suggestedSkill as string)}
-                                    className="text-[11px] font-bold text-indigo-300 hover:text-indigo-200 cursor-pointer"
+                                    disabled={isApplyingAll}
+                                    className="text-[11px] font-bold text-indigo-300 hover:text-indigo-200 disabled:opacity-50 cursor-pointer"
                                   >
                                     + Add "{s.suggestedSkill}" to Skills
                                   </button>
@@ -1041,7 +1169,7 @@ export function Review() {
                                     ) : canFix ? (
                                       <button
                                         onClick={() => applyFieldFix(key, item.fieldType, item.targetId, `${item.title}: ${item.desc}`)}
-                                        disabled={fixingKey === key}
+                                        disabled={fixingKey === key || isApplyingAll}
                                         className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 cursor-pointer"
                                       >
                                         {fixingKey === key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
@@ -1050,7 +1178,8 @@ export function Review() {
                                     ) : canAddSkill ? (
                                       <button
                                         onClick={() => addSkillFix(key, item.suggestedSkill)}
-                                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                                        disabled={isApplyingAll}
+                                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 cursor-pointer"
                                       >
                                         + Add "{item.suggestedSkill}" to Skills
                                       </button>
